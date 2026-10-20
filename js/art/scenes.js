@@ -1049,6 +1049,9 @@
     return sky(c, 0, 0, W, H) + R(0, 160, W, 65, c.k('#7FA163'));
   }
 
+  /* Набор помощников для файлов с дополнительными сценами (scenes-*.js) */
+  ART._kit = { SC, NAMES, W, H, f, f2, P, clamp, hash, rng, rr, pk, esc, rgb, hex, mix, dk, lt, INK, MINT, MINTD, CREAM, CORAL, MUSTARD, CAT, CATD, CATL, COAT, COATD, WOOD, WOODD, LAMP, SHOE, SKIN, HAIRC, TOPS, BOOKS, LITC, GLASS, LITP, TINT, X, R, RR, E, C, PA, PG, SK, TX, G, O, T, sh, mkCtx, nid, stopS, lin, rad, vg, hg, glow, clip, pattern, lampOn, LGT, skyStops, cloud, stars, moon, sky, winGrid, LEAF, bare, tree, birchMarks, leaves, snowfall, puddle, view, archD, win, sunPatch, curtain, rod, radiator, wall, floor, dimLayer, deskLamp, floorLamp, fluoro, books, flushBooks, bookcase, leafD, plant, mug, kettle, clockFace, SLOT_HM, framed, diploma, cat, person, stub, LN };
+
   /* ======================================================================
      Диспетчер
      ====================================================================== */
