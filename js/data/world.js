@@ -77,7 +77,7 @@
     dynasty: {
       name: ['Из семьи врачей', 'Из семьи врачей'],
       desc: 'Мама — невролог, папа — хирург. Помогают деньгами, но ждут великих свершений.',
-      perk: 'Старт с 30 000 ₽, +10 репутации, мама иногда присылает деньги',
+      perk: 'Старт с 30 000 ₽, +10 репутации, мама иногда присылает деньги',
       money: 30000,
       rep: 12,
       know: { all: 4 },
@@ -109,21 +109,21 @@
   D.dreams = {
     flat: {
       title: 'Своя квартира',
-      goal: 'Накопить 1 000 000 ₽ на первый взнос по ипотеке.',
-      progress: (s) => ({ value: Math.max(0, s.money), max: 1000000, label: A.util.money(Math.max(0, s.money)) + ' из 1 000 000 ₽' }),
+      goal: 'Накопить 1 000 000 ₽ на первый взнос по ипотеке.',
+      progress: (s) => ({ value: Math.max(0, s.money), max: 1000000, label: A.util.money(Math.max(0, s.money)) + ' из 1 000 000 ₽' }),
       check: (s) => s.money >= 1000000,
       ending: 'flat',
     },
     office: {
       title: 'Свой кабинет',
-      goal: 'Открыть частный кабинет: 600 000 ₽, репутация 70 и вторая категория.',
+      goal: 'Открыть частный кабинет: 600 000 ₽, репутация 70 и вторая категория.',
       progress: (s) => {
         const rank = A.game ? A.game.rankIndex(s) : 0;
         const parts = [Math.min(1, Math.max(0, s.money) / 600000), Math.min(1, s.rep / 70), Math.min(1, rank / 2)];
         return {
           value: parts.reduce((a, b) => a + b, 0),
           max: 3,
-          label: A.util.money(Math.max(0, s.money)) + ' / 600 000 ₽ · репутация ' + Math.round(s.rep) + '/70 · категория ' + (rank >= 2 ? 'есть' : 'нет'),
+          label: A.util.money(Math.max(0, s.money)) + ' / 600 000 ₽ · репутация ' + Math.round(s.rep) + '/70 · категория ' + (rank >= 2 ? 'есть' : 'нет'),
         };
       },
       check: (s) => s.money >= 600000 && s.rep >= 70 && A.game.rankIndex(s) >= 2,
@@ -147,13 +147,13 @@
     },
     balance: {
       title: 'Жить, а не выживать',
-      goal: 'Встретить 1 марта врачом без выгорания: накопления 200 000 ₽, здоровье 70+, стресс ниже 40.',
+      goal: 'Встретить 1 марта врачом без выгорания: накопления 200 000 ₽, здоровье 70+, стресс ниже 40.',
       progress: (s) => {
         const target = A.cal.dayOf(2, 1);
         return {
           value: Math.min(s.day, target),
           max: target,
-          label: 'До 1 марта: ' + Math.max(0, target - s.day) + ' дн. · ' + A.util.money(Math.max(0, s.money)) + ' / 200 000 ₽',
+          label: 'До 1 марта: ' + Math.max(0, target - s.day) + ' дн. · ' + A.util.money(Math.max(0, s.money)) + ' / 200 000 ₽',
         };
       },
       check: (s) =>
@@ -305,8 +305,8 @@
     night_owl: { name: 'Ночная смена', desc: 'Отработать 10 ночей.' },
     courier: { name: 'Доставка за 15 минут', desc: 'Отработать 8 смен курьером.' },
     kokoshka: { name: 'Лучший друг Кокошки', desc: 'Погладить Кокошку 30 раз.' },
-    saver: { name: 'Подушка безопасности', desc: 'Накопить 100 000 ₽.' },
-    rich: { name: 'Миллион', desc: 'Накопить 1 000 000 ₽.' },
+    saver: { name: 'Подушка безопасности', desc: 'Накопить 100 000 ₽.' },
+    rich: { name: 'Миллион', desc: 'Накопить 1 000 000 ₽.' },
     burnout: { name: 'Сгорел{|а} на работе', desc: 'Дойти до выгорания.' },
     recovered: { name: 'Сначала маску на себя', desc: 'Восстановиться после выгорания.' },
     therapy: { name: 'Врачу, исцелися сам', desc: 'Сходить на 5 сессий супервизии или терапии.' },

@@ -110,6 +110,8 @@
   };
   function inline(s) {
     return s
+      .replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0')
+      .replace(/ (₽|%)/g, '\u00a0$1')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[\s(«])\*([^*\s][^*]*?)\*(?=[\s).,:;!?»]|$)/g, '$1<em>$2</em>');
   }
