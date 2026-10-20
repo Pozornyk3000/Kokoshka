@@ -19248,7 +19248,7 @@ details.note summary {
       '<button type="button" class="btn ghost" data-act="about">Об игре</button>' +
       '</div>' +
       '<p class="cover-note">' +
-      (cloud === 'on' ? 'Сохранения хранятся в браузере и в вашем личном разделе Claude.' : cloud === 'connecting' ? 'Проверяем облачное сохранение…' : 'Игра сохраняется автоматически в этом браузере.') +
+      (cloud === 'on' ? 'Сохранения хранятся в браузере и в вашем личном разделе Claude.' : cloud === 'connecting' ? 'Проверяем облачное сохранение…' : 'Игра сохраняется автоматически ' + (window.AnamnezAndroid ? 'на этом телефоне.' : 'в этом браузере.')) +
       '</p>' +
       '</section></div></main>'
     );
@@ -20583,7 +20583,7 @@ details.note summary {
 
 </script>
 <script>
-if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.AnamnezAndroid) {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !window.AnamnezAndroid) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
 </script>

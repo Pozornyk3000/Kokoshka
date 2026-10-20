@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Цвета совпадают с --paper и --stamp из css/style.css -->
+<!-- Цвета совпадают с переменными paper и stamp из css/style.css -->
 <resources>
     <color name="paper">#F8F9F4</color>
     <color name="stamp">#5B3FA8</color>

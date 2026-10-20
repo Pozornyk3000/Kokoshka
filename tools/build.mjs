@@ -103,7 +103,7 @@ function buildSite(outDir) {
 
   // В приложении Android service worker не нужен: файлы и так лежат внутри APK
   const swReg = `<script>
-if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.AnamnezAndroid) {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !window.AnamnezAndroid) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
 </script>`;
