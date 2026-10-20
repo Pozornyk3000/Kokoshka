@@ -1,0 +1,187 @@
+name: Android и веб-версия
+
+# Собирает APK и сайт-версию, проверяет их на эмуляторах Android и выкладывает
+# готовые файлы в релиз «android-latest»:
+# https://github.com/<владелец>/<репозиторий>/releases/latest/download/anamnez.apk
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'index.html'
+      - 'css/**'
+      - 'js/**'
+      - 'assets/**'
+      - 'android/**'
+      - 'tools/**'
+      - 'docs/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Сборка
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # номер версии = число коммитов
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Проверка данных игры
+        run: node tools/validate.mjs
+
+      - name: Сборка сайта и содержимого APK
+        run: |
+          node tools/build.mjs --site android/app/src/main/assets/www
+          node tools/build.mjs --site docs
+          if [ -n "$(git status --porcelain -- docs)" ]; then
+            git status --short -- docs
+            echo "::error::Каталог docs/ устарел. Выполните: node tools/build.mjs --site docs"
+            exit 1
+          fi
+          node tools/build.mjs --out dist
+
+      - name: Браузерные проверки (автоигрок и мост Android)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node tools/bridge-test.cjs docs/index.html
+          node tools/autoplay.cjs docs/index.html 400 --smart --days 10
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Сборка APK
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+
+      - name: Проверка APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
+          "$BT/aapt2" dump badging "$APK" | grep -E "^(package|sdkVersion|targetSdkVersion|application-label|uses-permission)"
+          if "$BT/aapt2" dump badging "$APK" | grep -q "uses-permission"; then
+            echo "::warning::В APK появились разрешения"
+          fi
+          ls -la android/app/build/outputs/apk/*/
+
+      - name: Файлы для релиза
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/anamnez.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/anamnez-debug.apk
+          cp dist/anamnez.html out/anamnez.html
+          echo "1.0.$(git rev-list --count HEAD)" > out/version.txt
+          cat out/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anamnez
+          path: out/
+          retention-days: 30
+
+  emulator:
+    name: Эмулятор Android ${{ matrix.api }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: anamnez
+          path: out
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Инструменты для проверки
+        run: npm install --no-save --no-package-lock playwright-core@1.56.1
+
+      - name: Включить KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Проверка на эмуляторе
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          script: bash tools/android-e2e.sh out api${{ matrix.api }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-api${{ matrix.api }}
+          path: e2e-out/
+          retention-days: 14
+
+  release:
+    name: Релиз
+    needs: [build, emulator]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: anamnez
+          path: out
+
+      - name: Выложить APK в релиз android-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VER=$(cat out/version.txt)
+          cat > notes.md <<'EOF'
+          **Как установить на Android (7 и новее)**
+          1. На телефоне скачайте файл **anamnez.apk** ниже.
+          2. Откройте его. Если телефон спросит, разрешите установку из этого источника (браузера или «Файлов»).
+          3. Нажмите «Установить». Если Play Защита предупредит о неизвестном приложении — «Всё равно установить».
+
+          Игра работает без интернета и не просит никаких разрешений. Новая версия ставится поверх старой — сохранения остаются.
+
+          **На компьютере:** скачайте **anamnez.html** — это вся игра в одном файле, открывается в любом браузере.
+          EOF
+          if gh release view android-latest > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/android-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            gh release upload android-latest out/anamnez.apk out/anamnez.html --clobber
+            gh release edit android-latest --title "Анамнез $VER" --notes-file notes.md --latest
+          else
+            gh release create android-latest out/anamnez.apk out/anamnez.html --target "$GITHUB_SHA" --title "Анамнез $VER" --notes-file notes.md --latest
+          fi
+          echo "APK: https://github.com/$GH_REPO/releases/latest/download/anamnez.apk"

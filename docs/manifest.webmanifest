@@ -1,0 +1,32 @@
+{
+  "name": "Анамнез — симулятор ординатора-психиатра",
+  "short_name": "Анамнез",
+  "description": "Текстовая RPG о жизни ординатора-психиатра: лекции, клинические задачи, сессия, работа и подработки.",
+  "lang": "ru",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#dce5de",
+  "theme_color": "#f8f9f4",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
