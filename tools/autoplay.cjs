@@ -42,11 +42,18 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
     await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: true });
   };
   const click = async (sel) => {
-    const el = await page.$(sel);
-    if (!el) return false;
-    await el.click();
-    await page.waitForTimeout(15);
-    return true;
+    for (let k = 0; k < 3; k++) {
+      const el = await page.$(sel);
+      if (!el) return false;
+      try {
+        await el.click({ timeout: 3000 });
+        await page.waitForTimeout(15);
+        return true;
+      } catch (e) {
+        await page.waitForTimeout(60);
+      }
+    }
+    return false;
   };
 
   // Титул → новая игра
@@ -93,7 +100,7 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
     if (await click('[data-act="confirm-yes"]')) continue;
     if (await page.$('.sheet [data-act="pick"]')) {
       const picks = await page.$$('.sheet [data-act="pick"]:not([aria-disabled="true"])');
-      if (picks.length) await picks[Math.floor(Math.random() * picks.length)].click();
+      if (picks.length) await picks[Math.floor(Math.random() * picks.length)].click().catch(() => {});
       else await click('[data-act="close-sheet"]');
       continue;
     }

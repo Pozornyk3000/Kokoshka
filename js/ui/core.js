@@ -273,13 +273,19 @@
   };
 
   UI.toast = function (html, ms) {
-    UI.view.toast = html;
-    UI.render();
+    UI.view.toast = null;
+    let t = document.querySelector('.toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.className = 'toast';
+      t.setAttribute('role', 'status');
+      document.body.appendChild(t);
+    }
+    t.innerHTML = html;
     clearTimeout(UI._toastT);
     UI._toastT = setTimeout(() => {
-      UI.view.toast = null;
-      const t = document.querySelector('.toast');
-      if (t) t.remove();
+      const el = document.querySelector('.toast');
+      if (el) el.remove();
     }, ms || 3200);
   };
 

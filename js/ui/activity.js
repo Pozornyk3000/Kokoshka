@@ -744,6 +744,7 @@
     if (id === 'course_child') G.apply(s, { know: { child: 15 } });
     G.after(s);
     G.save();
+    UI.render();
     UI.toast('Куплено: ' + U.esc(it.name));
   });
 
