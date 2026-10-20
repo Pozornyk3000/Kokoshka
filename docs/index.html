@@ -1867,7 +1867,8 @@ details.note summary {
 (function () {
   var err = '';
   window.addEventListener('error', function (e) { if (!err && e && e.message) err = String(e.message); });
-  setTimeout(function () {
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(check, 2000); });
+  function check() {
     if (window.A && window.A.ui && window.A.ui.render) return;
     var el = document.getElementById('app');
     if (!el) return;
@@ -1875,7 +1876,7 @@ details.note summary {
       '<p><b>Игра не запустилась.</b></p>' +
       '<p>Похоже, браузер устарел. Обновите Chrome (на Android — ещё и «Android System WebView» в Google Play) и откройте игру снова.</p>' +
       (err ? '<p style="opacity:.6;font-size:13px">' + err.replace(/[<>&]/g, '') + '</p>' : '') + '</div>';
-  }, 9000);
+  }
 })();
 </script>
 <script>
@@ -19369,6 +19370,11 @@ details.note summary {
   });
   UI.on('new', () => {
     const go = () => {
+      // Если игрок передумает и вернётся на титул, «Продолжить» должно вести в текущую игру, а не в ту, что была при запуске
+      if (A.state) {
+        G.save();
+        A.boot.save = A.state;
+      }
       UI.view.create = null;
       UI.view.screen = 'create';
       A.state = null;
@@ -19642,6 +19648,8 @@ details.note summary {
     UI.ask('Загрузить сохранение?', 'Текущая игра будет заменена сохранением от ' + C.fmt(st.day) + '.', 'Загрузить', () => {
       A.state = A.migrate(st);
       G.save();
+      // Чекпоинт прежней игры больше не подходит: начало недели — теперь загруженная игра
+      A.store.checkpoint(A.state);
       UI.view.tab = 'hub';
       UI.render({ scroll: 'top' });
     });
@@ -20533,6 +20541,15 @@ details.note summary {
     if (hot && hot.state && hot.state.player) {
       A.state = A.migrate(hot.state);
       if (hot.view) Object.assign(A.ui.view, hot.view);
+    }
+    // Приложение Android пересоздало окно (смена темы, возврат после выгрузки) — продолжаем без титульного экрана
+    if (location.hash === '#resume') {
+      if (!A.state && A.boot.save) A.state = A.migrate(A.boot.save);
+      try {
+        history.replaceState(null, '', location.pathname + location.search);
+      } catch (e) {
+        /* не страшно */
+      }
     }
     A.ui.render();
     A.store.onChange(() => {

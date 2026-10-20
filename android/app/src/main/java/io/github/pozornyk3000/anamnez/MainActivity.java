@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,6 +29,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -74,15 +76,28 @@ public class MainActivity extends Activity {
         }
         setContentView(root);
         styleSystemBars();
-        createWebView();
+        // Окно пересоздано (смена темы, возврат после выгрузки системой) — игра продолжится сама, без титульного экрана
+        createWebView(savedInstanceState != null);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
-    private void createWebView() {
+    private void createWebView(boolean resume) {
         boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-        WebView.setWebContentsDebuggingEnabled(debuggable);
-
-        web = new WebView(this);
+        try {
+            WebView.setWebContentsDebuggingEnabled(debuggable);
+            web = new WebView(this);
+        } catch (RuntimeException e) {
+            // Нет системного WebView (отключён или обновляется) — объясняем, вместо того чтобы упасть
+            Log.e(TAG, "WebView недоступен", e);
+            web = null;
+            TextView t = new TextView(this);
+            int pad = Math.round(24 * getResources().getDisplayMetrics().density);
+            t.setPadding(pad, pad, pad, pad);
+            t.setTextSize(17);
+            t.setText(R.string.no_webview);
+            root.addView(t);
+            return;
+        }
         web.setBackgroundColor(getColor(R.color.paper));
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -106,7 +121,7 @@ public class MainActivity extends Activity {
         // Объект доступен странице до запуска её скриптов: игра по нему понимает, что она в приложении
         web.addJavascriptInterface(new Bridge(), "AnamnezAndroid");
         root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        web.loadUrl(START_URL);
+        web.loadUrl(resume ? START_URL + "#resume" : START_URL);
     }
 
     /** Системный размер шрифта учитываем, но в разумных пределах, чтобы не ломалась вёрстка. В игре есть свой «Крупный текст». */
@@ -121,7 +136,8 @@ public class MainActivity extends Activity {
         Window w = getWindow();
         int paper = getColor(R.color.paper);
         w.setStatusBarColor(paper);
-        w.setNavigationBarColor(paper);
+        // До Android 8 кнопки навигации всегда белые: на светлой панели их не видно, поэтому панель чёрная
+        w.setNavigationBarColor(Build.VERSION.SDK_INT < 26 && !night ? Color.BLACK : paper);
         if (Build.VERSION.SDK_INT >= 29) w.setNavigationBarContrastEnforced(false);
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController c = w.getInsetsController();
@@ -262,7 +278,7 @@ public class MainActivity extends Activity {
             Log.w(TAG, "WebView renderer gone, crash=" + detail.didCrash());
             if (view == web) {
                 destroyWebView();
-                createWebView();
+                createWebView(true);
             } else {
                 view.destroy();
             }

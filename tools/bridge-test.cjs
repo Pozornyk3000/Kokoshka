@@ -100,6 +100,20 @@ const MOCK = `
   await click('[data-act="share-code"]');
   if (!(await ev(() => (window.__shared || '').startsWith('ANM1.')))) fail('«Отправить код» не передал код в приложение');
 
+  // «Новая игра» → передумал и вернулся → «Продолжить» ведёт в текущую игру, а не в ту, что была при запуске
+  const before = await ev(() => window.A.state.day * 4 + window.A.state.slot);
+  await click('[data-act="tab"][data-arg="menu"]');
+  await click('[data-act="new"]');
+  await click('[data-act="confirm-yes"]');
+  if (!(await ev(() => window.A.ui.back()))) fail('back() на экране создания вернул false');
+  if (!(await page.$('[data-act="continue"]'))) fail('после отказа от новой игры нет «Продолжить»');
+  else {
+    await click('[data-act="continue"]');
+    const after = await ev(() => (window.A.state ? window.A.state.day * 4 + window.A.state.slot : null));
+    if (after !== before) fail(`«Продолжить» после отказа от новой игры загрузило не ту игру (${before} → ${after})`);
+  }
+  await click('[data-act="tab"][data-arg="menu"]');
+
   // Версия приложения на экране «Об игре»
   await click('[data-act="about"]');
   if (!/Версия приложения 1\.0\.test/.test(await page.textContent('main'))) fail('нет версии приложения в «Об игре»');
@@ -113,6 +127,14 @@ const MOCK = `
   const boot = await ev(() => (window.A.boot.save ? window.A.boot.save.day * 4 + window.A.boot.save.slot : null));
   if (boot !== day) fail(`после перезапуска сохранение не найдено в файлах (ждали ${day}, получили ${boot})`);
   if (!(await page.$('[data-act="continue"]'))) fail('на титуле нет «Продолжить»');
+
+  // Окно пересоздано приложением (#resume): игра продолжается сразу, без титула, адрес очищается
+  // (переход с другим query — настоящая загрузка страницы, как у нового WebView; смена одного якоря страницу не перезагрузила бы)
+  await page.goto(url + '?resume-test=1#resume');
+  await page.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'));
+  const resumed = await ev(() => ({ state: !!window.A.state, hash: location.hash, hub: !!document.querySelector('.hud') }));
+  if (!resumed.state || !resumed.hub) fail('#resume не продолжил игру: ' + JSON.stringify(resumed));
+  if (resumed.hash) fail('#resume остался в адресе');
 
   // Тема: приложение сообщает тёмную тему — игра включает тёмную палитру даже при светлой системной теме браузера
   if ((await ev(() => document.documentElement.getAttribute('data-theme'))) !== 'light') fail('data-theme не light при светлой теме приложения');

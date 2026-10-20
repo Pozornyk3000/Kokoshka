@@ -1,7 +1,7 @@
 name: Android и веб-версия
 
 # Собирает APK и сайт-версию, проверяет их на эмуляторах Android и выкладывает
-# готовые файлы в релиз «android-latest»:
+# готовые файлы в релиз (последний всегда доступен по постоянной ссылке):
 # https://github.com/<владелец>/<репозиторий>/releases/latest/download/anamnez.apk
 on:
   push:
@@ -18,6 +18,11 @@ on:
       - 'docs/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
+    inputs:
+      shots:
+        description: 'Вывести скриншоты с эмуляторов в журнал (для проверки вёрстки)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -140,6 +145,18 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           script: bash tools/android-e2e.sh out api${{ matrix.api }}
 
+      - name: Скриншоты в журнал
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.shots
+        run: |
+          for f in e2e-out/*/0*.png; do
+            [ -f "$f" ] || continue
+            if command -v convert > /dev/null; then
+              echo "SHOT jpg $f $(convert "$f" -resize 360x -quality 60 jpg:- | base64 -w0)"
+            else
+              echo "SHOT png $f $(base64 -w0 "$f")"
+            fi
+          done
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -150,9 +167,16 @@ jobs:
   release:
     name: Релиз
     needs: [build, emulator]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Релизы — только из основной ветки и из ветки, где делается приложение, иначе сборка
+    # из случайной ветки стала бы «последней» версией для всех.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/psychiatrist-simulator-wdnqvh')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: android-release
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -161,12 +185,13 @@ jobs:
           name: anamnez
           path: out
 
-      - name: Выложить APK в релиз android-latest
+      - name: Выложить APK в релиз
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           VER=$(cat out/version.txt)
+          TAG="android-v$VER"
           cat > notes.md <<'EOF'
           **Как установить на Android (7 и новее)**
           1. На телефоне скачайте файл **anamnez.apk** ниже.
@@ -177,11 +202,18 @@ jobs:
 
           **На компьютере:** скачайте **anamnez.html** — это вся игра в одном файле, открывается в любом браузере.
           EOF
-          if gh release view android-latest > /dev/null 2>&1; then
-            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/android-latest" -f sha="$GITHUB_SHA" -F force=true > /dev/null
-            gh release upload android-latest out/anamnez.apk out/anamnez.html --clobber
-            gh release edit android-latest --title "Анамнез $VER" --notes-file notes.md --latest
+          # Каждая версия — свой тег (теги не переносятся). Повторный запуск на том же коммите обновляет файлы.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/anamnez.apk out/anamnez.html --clobber
+            gh release edit "$TAG" --title "Анамнез $VER" --notes-file notes.md --latest
           else
-            gh release create android-latest out/anamnez.apk out/anamnez.html --target "$GITHUB_SHA" --title "Анамнез $VER" --notes-file notes.md --latest
+            gh release create "$TAG" out/anamnez.apk out/anamnez.html --target "$GITHUB_SHA" --title "Анамнез $VER" --notes-file notes.md --latest
           fi
+          # Прежний «скользящий» релиз android-latest больше не нужен
+          gh release delete android-latest --yes --cleanup-tag > /dev/null 2>&1 || true
+          # Старые релизы приложения: оставляем три последних
+          gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[].tagName' \
+            | grep '^android-' | tail -n +4 | while read -r old; do
+              gh release delete "$old" --yes --cleanup-tag || true
+            done
           echo "APK: https://github.com/$GH_REPO/releases/latest/download/anamnez.apk"

@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Анамнез</string>
     <string name="share_title">Код сохранения</string>
+    <string name="no_webview">Не удалось запустить системный компонент Android System WebView, на котором работает игра. Обновите или включите его в Google Play и откройте «Анамнез» снова.</string>
 </resources>

@@ -152,6 +152,11 @@
   });
   UI.on('new', () => {
     const go = () => {
+      // Если игрок передумает и вернётся на титул, «Продолжить» должно вести в текущую игру, а не в ту, что была при запуске
+      if (A.state) {
+        G.save();
+        A.boot.save = A.state;
+      }
       UI.view.create = null;
       UI.view.screen = 'create';
       A.state = null;
@@ -425,6 +430,8 @@
     UI.ask('Загрузить сохранение?', 'Текущая игра будет заменена сохранением от ' + C.fmt(st.day) + '.', 'Загрузить', () => {
       A.state = A.migrate(st);
       G.save();
+      // Чекпоинт прежней игры больше не подходит: начало недели — теперь загруженная игра
+      A.store.checkpoint(A.state);
       UI.view.tab = 'hub';
       UI.render({ scroll: 'top' });
     });

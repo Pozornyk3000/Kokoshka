@@ -17,7 +17,9 @@ const PKG = process.env.PKG || 'io.github.pozornyk3000.anamnez';
   const devices = await pw._android.devices({ omitDriverInstall: true });
   if (!devices.length) throw new Error('adb не видит ни одного устройства');
   const device = devices[0];
-  const webview = await device.webView({ pkg: PKG }, { timeout: 45000 });
+  // По имени сокета (его знает android-e2e.sh) — надёжнее, чем по имени пакета
+  const sel = process.env.SOCK ? { socketName: process.env.SOCK } : { pkg: PKG };
+  const webview = await device.webView(sel, { timeout: 45000 });
   const page = await webview.page();
   await page.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'), null, { timeout: 30000 });
   let out;

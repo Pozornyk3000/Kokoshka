@@ -41,6 +41,7 @@ devtools() {
   for _ in $(seq 1 40); do
     p=$(pid)
     if [ -n "$p" ] && adb shell cat /proc/net/unix 2>/dev/null | grep -q "webview_devtools_remote_$p"; then
+      export SOCK="webview_devtools_remote_$p"
       return 0
     fi
     sleep 1
@@ -91,7 +92,7 @@ fresh_start
 devtools || err "DevTools после перезапуска"
 GOT=$(check eval "A.boot.save ? A.boot.save.day * 4 + A.boot.save.slot : -2")
 echo "после перезапуска: $GOT"
-[ "$KEY" = "$GOT" ] && [ "$KEY" != "-1" ] || err "сохранение потерялось при закрытии (было $KEY, стало $GOT)"
+[[ "$KEY" =~ ^[0-9]+$ ]] && [ "$KEY" = "$GOT" ] || err "сохранение потерялось при закрытии (было '$KEY', стало '$GOT')"
 check eval "!!AnamnezAndroid.storeGet('anamnez.save.v1')" | grep -q true || err "нет файла сохранения в приложении"
 shot 03-after-restart
 
@@ -138,10 +139,11 @@ sleep 1
 devtools || err "DevTools после смены темы"
 check eval "[matchMedia('(prefers-color-scheme: dark)').matches, document.documentElement.getAttribute('data-theme'), getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()].join(' ')" | tee "$RES/dark.txt"
 grep -qi "#16201d" "$RES/dark.txt" || err "тёмная тема не дошла до игры"
-GOT=$(check eval "A.boot.save ? A.boot.save.day * 4 + A.boot.save.slot : -2")
-[ "$GOT" = "$KEY" ] || [ "$GOT" -ge "$KEY" ] 2>/dev/null || err "после смены темы пропало сохранение"
-shot 05-dark-title
-check click '[data-act="continue"]' > /dev/null && sleep 1 && shot 06-dark-game
+GOT=$(check eval "A.state ? A.state.day * 4 + A.state.slot : -2")
+echo "после смены темы: $GOT"
+[[ "$GOT" =~ ^[0-9]+$ ]] && [ "$GOT" -ge "$KEY" ] || err "после смены темы игра не продолжилась сама (позиция '$GOT')"
+shot 05-dark-game
+check click '[data-act="tab"][data-arg="menu"]' > /dev/null 2>&1 && sleep 1 && shot 06-dark-menu
 adb logcat -c
 adb shell cmd uimode night no
 wait_ready > /dev/null || true
@@ -149,7 +151,7 @@ sleep 1
 
 adb logcat -d > "$RES/logcat-debug.txt" 2>/dev/null
 grep -E "AnamnezWeb.*(Uncaught|TypeError|ReferenceError|SyntaxError)" "$RES/logcat-debug.txt" && err "ошибки JavaScript в журнале (отладочная сборка)"
-grep -E "FATAL EXCEPTION" -A 12 "$RES/logcat-debug.txt" && err "приложение падало"
+grep -A 3 "FATAL EXCEPTION" "$RES/logcat-debug.txt" | grep -q "Process: $PKG" && err "приложение падало"
 
 # ---------------------------------------------------------------- релизная сборка
 step "7. Релизная сборка: установка и запуск"
@@ -161,7 +163,7 @@ shot 07-release-title
 adb logcat -d > "$RES/logcat-release.txt" 2>/dev/null
 grep -q "ready=true" "$RES/logcat-release.txt" || err "игра в релизной сборке не запустилась"
 grep -E "AnamnezWeb.*(Uncaught|TypeError|ReferenceError|SyntaxError)" "$RES/logcat-release.txt" && err "ошибки JavaScript в журнале (релиз)"
-grep -E "FATAL EXCEPTION" -A 12 "$RES/logcat-release.txt" && err "релизная сборка падала"
+grep -A 3 "FATAL EXCEPTION" "$RES/logcat-release.txt" | grep -q "Process: $PKG" && err "релизная сборка падала"
 pkg_flags | tee "$RES/flags-release.txt"
 grep -q DEBUGGABLE "$RES/flags-release.txt" && err "релизная сборка отлаживаемая"
 adb shell dumpsys package "$PKG" | grep -E "versionCode|versionName|targetSdk" | head -3 | tee "$RES/package.txt"

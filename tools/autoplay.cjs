@@ -35,7 +35,7 @@ const cdp = flag('--cdp', null) || androidPkg;
     const devices = await pw._android.devices({ omitDriverInstall: true });
     if (!devices.length) throw new Error('adb не видит ни одного устройства');
     device = devices[0];
-    const webview = await device.webView({ pkg: androidPkg }, { timeout: 60000 });
+    const webview = await device.webView(process.env.SOCK ? { socketName: process.env.SOCK } : { pkg: androidPkg }, { timeout: 60000 });
     page = await webview.page();
     console.log('Подключено к', device.model(), page.url());
   } else if (cdp) {

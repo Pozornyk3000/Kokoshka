@@ -4,7 +4,8 @@
     <style name="Theme.Anamnez" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/paper</item>
         <item name="android:statusBarColor">@color/paper</item>
-        <item name="android:navigationBarColor">@color/paper</item>
+        <!-- До Android 8.1 тёмных кнопок навигации не бывает: на светлой панели белые кнопки не видны -->
+        <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:colorPrimary">@color/stamp</item>
         <item name="android:colorAccent">@color/stamp</item>

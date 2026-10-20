@@ -2,14 +2,20 @@ plugins {
     id 'com.android.application'
 }
 
-// Номер версии = число коммитов: каждая новая сборка ставится поверх старой, сохранения остаются
-def commitCount = { ->
+def git = { List<String> cmd, String fallback ->
     try {
-        return providers.exec { commandLine 'git', 'rev-list', '--count', 'HEAD' }.standardOutput.asText.get().trim().toInteger()
+        return providers.exec { commandLine cmd }.standardOutput.asText.get().trim()
     } catch (Exception ignored) {
-        return 1
+        return fallback
     }
-}()
+}
+// Название версии — 1.0.<число коммитов>, для людей.
+def commitCount = git(['git', 'rev-list', '--count', 'HEAD'], '1').toInteger()
+// Код версии растёт со временем коммита (минуты с 1 января 2026 + 1000), а не с числом коммитов:
+// так сборка из любой ветки или после слияния не окажется «старее» уже установленной,
+// и обновление ставится поверх, не стирая сохранения.
+def commitTime = git(['git', 'log', '-1', '--format=%ct'], '1767225600').toLong()
+def code = (int) ((commitTime - 1767225600L).intdiv(60L)) + 1000
 
 android {
     namespace 'io.github.pozornyk3000.anamnez'
@@ -19,7 +25,7 @@ android {
         applicationId 'io.github.pozornyk3000.anamnez'
         minSdk 24
         targetSdk 35
-        versionCode commitCount
+        versionCode code
         versionName "1.0.${commitCount}"
     }
 

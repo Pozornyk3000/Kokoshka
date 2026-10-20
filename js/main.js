@@ -46,6 +46,15 @@
       A.state = A.migrate(hot.state);
       if (hot.view) Object.assign(A.ui.view, hot.view);
     }
+    // Приложение Android пересоздало окно (смена темы, возврат после выгрузки) — продолжаем без титульного экрана
+    if (location.hash === '#resume') {
+      if (!A.state && A.boot.save) A.state = A.migrate(A.boot.save);
+      try {
+        history.replaceState(null, '', location.pathname + location.search);
+      } catch (e) {
+        /* не страшно */
+      }
+    }
     A.ui.render();
     A.store.onChange(() => {
       if (!A.state) A.ui.render();

@@ -32,12 +32,15 @@ const desc = (html.match(/<meta name="description"[^>]*>/) || [''])[0];
 const fit = '<meta name="claude:viewport-fit-sides" content="cover">';
 const body = '<div id="app"><p style="padding:24px;font-family:sans-serif">Загрузка «Анамнеза»…</p></div>';
 
-/* Запасной экран: если браузер слишком старый и игра не стартовала (ES5, чтобы сработал везде). */
+/* Запасной экран: если браузер слишком старый и игра не стартовала (ES5, чтобы сработал везде).
+   Проверка — через 2 с после разбора всей страницы (DOMContentLoaded наступает и при ошибке синтаксиса),
+   чтобы медленная загрузка не выглядела как «старый браузер». */
 const bootGuard = `<script>
 (function () {
   var err = '';
   window.addEventListener('error', function (e) { if (!err && e && e.message) err = String(e.message); });
-  setTimeout(function () {
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(check, 2000); });
+  function check() {
     if (window.A && window.A.ui && window.A.ui.render) return;
     var el = document.getElementById('app');
     if (!el) return;
@@ -45,7 +48,7 @@ const bootGuard = `<script>
       '<p><b>Игра не запустилась.</b></p>' +
       '<p>Похоже, браузер устарел. Обновите Chrome (на Android — ещё и «Android System WebView» в Google Play) и откройте игру снова.</p>' +
       (err ? '<p style="opacity:.6;font-size:13px">' + err.replace(/[<>&]/g, '') + '</p>' : '') + '</div>';
-  }, 9000);
+  }
 })();
 </script>`;
 
@@ -87,7 +90,7 @@ function buildSite(outDir) {
     short_name: 'Анамнез',
     description: descText,
     lang: 'ru',
-    id: './',
+    id: 'anamnez',
     start_url: './',
     scope: './',
     display: 'standalone',
@@ -129,7 +132,8 @@ const CACHE = 'anamnez-${version}';
 const FILES = ${JSON.stringify(files)};
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' — мимо HTTP-кэша браузера, чтобы новая версия не сохранила старую страницу
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
