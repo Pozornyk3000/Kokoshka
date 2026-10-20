@@ -303,6 +303,13 @@ public class MainActivity extends Activity {
             return versionName();
         }
 
+        /** Тёмная ли тема системы. Старые WebView (до ~103) не передают её странице через
+            prefers-color-scheme, поэтому игра спрашивает напрямую и ставит data-theme сама. */
+        @JavascriptInterface
+        public boolean night() {
+            return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        }
+
         /* Сохранения игры в файлах приложения. Запись атомарная и сразу на диск:
            сначала во временный файл, потом переименование поверх старого. */
 

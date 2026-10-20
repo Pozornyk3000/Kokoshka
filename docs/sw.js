@@ -1,5 +1,5 @@
 /* Анамнез: офлайн-кэш. Сгенерировано tools/build.mjs. */
-const CACHE = 'anamnez-7857f2bc2196';
+const CACHE = 'anamnez-6c4d08859e96';
 const FILES = ["./","index.html","manifest.webmanifest","icons/icon-192.png","icons/icon-512.png","icons/maskable-512.png","icons/apple-touch-icon.png","icons/favicon-32.png","fonts/caveat-cyrillic-ext.woff2","fonts/caveat-cyrillic.woff2","fonts/caveat-latin-ext.woff2","fonts/caveat-latin.woff2","fonts/golos-text-cyrillic-ext.woff2","fonts/golos-text-cyrillic.woff2","fonts/golos-text-latin-ext.woff2","fonts/golos-text-latin.woff2","fonts/oranienbaum-cyrillic-ext.woff2","fonts/oranienbaum-cyrillic.woff2","fonts/oranienbaum-latin-ext.woff2","fonts/oranienbaum-latin.woff2","fonts/pt-mono-cyrillic-ext.woff2","fonts/pt-mono-cyrillic.woff2","fonts/pt-mono-latin-ext.woff2","fonts/pt-mono-latin.woff2"];
 
 self.addEventListener('install', (e) => {

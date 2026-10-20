@@ -31,7 +31,8 @@ const MOCK = `
     storeRemove: function (k) { window.__bridgeLog.push('rm:' + k); delete files[k]; persist(); },
     copyText: function (t) { window.__copied = t; return true; },
     shareText: function (t) { window.__shared = t; },
-    version: function () { return '1.0.test'; }
+    version: function () { return '1.0.test'; },
+    night: function () { return !!window.__night; }
   };
 })();`;
 
@@ -113,11 +114,20 @@ const MOCK = `
   if (boot !== day) fail(`после перезапуска сохранение не найдено в файлах (ждали ${day}, получили ${boot})`);
   if (!(await page.$('[data-act="continue"]'))) fail('на титуле нет «Продолжить»');
 
+  // Тема: приложение сообщает тёмную тему — игра включает тёмную палитру даже при светлой системной теме браузера
+  if ((await ev(() => document.documentElement.getAttribute('data-theme'))) !== 'light') fail('data-theme не light при светлой теме приложения');
+  await page.addInitScript(() => (window.__night = true));
+  await page.reload();
+  await page.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'));
+  const paper = await ev(() => getComputedStyle(document.documentElement).getPropertyValue('--paper').trim().toLowerCase());
+  if (paper !== '#16201d') fail('тёмная тема приложения не применилась: --paper = ' + paper);
+
   // Без моста (обычный браузер) всё по-старому: localStorage и нет текста про телефон
   const plain = await browser.newPage();
   await plain.goto(url);
   await plain.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'));
   if (await plain.evaluate(() => !!window.AnamnezAndroid)) fail('мост появился без приложения');
+  if (await plain.evaluate(() => document.documentElement.hasAttribute('data-theme'))) fail('в браузере не должно быть data-theme');
 
   await browser.close();
   if (errors.length) {

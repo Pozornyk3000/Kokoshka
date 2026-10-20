@@ -107,8 +107,12 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
 }
 </script>`;
+  // В приложении Android тема берётся у системы до первой отрисовки (старые WebView не сообщают её через CSS)
+  const appTheme = `<script>
+try { if (window.AnamnezAndroid && AnamnezAndroid.night) document.documentElement.setAttribute('data-theme', AnamnezAndroid.night() ? 'dark' : 'light'); } catch (e) {}
+</script>`;
   const index =
-    `<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n${title}\n${desc}\n` +
+    `<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n${title}\n${desc}\n${appTheme}\n` +
     `<meta name="theme-color" content="#f8f9f4" media="(prefers-color-scheme: light)">\n<meta name="theme-color" content="#16201d" media="(prefers-color-scheme: dark)">\n` +
     `<meta name="mobile-web-app-capable" content="yes">\n<meta name="apple-mobile-web-app-capable" content="yes">\n<meta name="apple-mobile-web-app-title" content="Анамнез">\n` +
     `<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">\n<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">\n` +

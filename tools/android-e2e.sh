@@ -131,16 +131,21 @@ check eval "AnamnezAndroid.copyText('проверка')" | grep -q true || err "
 check eval "AnamnezAndroid.version()" | tee "$RES/version.txt"
 
 step "6. Тёмная тема системы"
+adb logcat -c
 adb shell cmd uimode night yes
-sleep 5
+wait_ready || err "после смены темы страница не перезагрузилась"
+sleep 1
 devtools || err "DevTools после смены темы"
-[ "$(check eval "matchMedia('(prefers-color-scheme: dark)').matches")" = "true" ] || err "тёмная тема не дошла до игры"
+check eval "[matchMedia('(prefers-color-scheme: dark)').matches, document.documentElement.getAttribute('data-theme'), getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()].join(' ')" | tee "$RES/dark.txt"
+grep -qi "#16201d" "$RES/dark.txt" || err "тёмная тема не дошла до игры"
 GOT=$(check eval "A.boot.save ? A.boot.save.day * 4 + A.boot.save.slot : -2")
 [ "$GOT" = "$KEY" ] || [ "$GOT" -ge "$KEY" ] 2>/dev/null || err "после смены темы пропало сохранение"
 shot 05-dark-title
 check click '[data-act="continue"]' > /dev/null && sleep 1 && shot 06-dark-game
+adb logcat -c
 adb shell cmd uimode night no
-sleep 3
+wait_ready > /dev/null || true
+sleep 1
 
 adb logcat -d > "$RES/logcat-debug.txt" 2>/dev/null
 grep -E "AnamnezWeb.*(Uncaught|TypeError|ReferenceError|SyntaxError)" "$RES/logcat-debug.txt" && err "ошибки JavaScript в журнале (отладочная сборка)"
