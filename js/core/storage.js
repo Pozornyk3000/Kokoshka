@@ -10,7 +10,23 @@
     listeners: [],
   });
 
+  /* В приложении для Android сохранение дублируется в файл: localStorage в WebView пишется на диск
+     с задержкой, и ход, сделанный за секунду до того, как приложение смахнули, мог бы пропасть. */
+  function app() {
+    const a = window.AnamnezAndroid;
+    return a && a.storeGet && a.storeSet ? a : null;
+  }
+
   S.readLocal = function (kind) {
+    const a = app();
+    if (a) {
+      try {
+        const raw = a.storeGet(KEYS[kind]);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {
+        /* файл повреждён — попробуем localStorage */
+      }
+    }
     try {
       const raw = window.localStorage.getItem(KEYS[kind]);
       return raw ? JSON.parse(raw) : null;
@@ -19,14 +35,33 @@
     }
   };
   S.writeLocal = function (kind, obj) {
-    try {
-      window.localStorage.setItem(KEYS[kind], JSON.stringify(obj));
-      return true;
-    } catch (e) {
-      return false;
+    const json = JSON.stringify(obj);
+    let ok = false;
+    const a = app();
+    if (a) {
+      try {
+        ok = !!a.storeSet(KEYS[kind], json);
+      } catch (e) {
+        ok = false;
+      }
     }
+    try {
+      window.localStorage.setItem(KEYS[kind], json);
+      ok = true;
+    } catch (e) {
+      /* нет места или доступа — остаётся файл приложения, если он есть */
+    }
+    return ok;
   };
   S.removeLocal = function (kind) {
+    const a = app();
+    if (a && a.storeRemove) {
+      try {
+        a.storeRemove(KEYS[kind]);
+      } catch (e) {
+        /* ignore */
+      }
+    }
     try {
       window.localStorage.removeItem(KEYS[kind]);
     } catch (e) {

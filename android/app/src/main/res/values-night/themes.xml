@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Тёмная тема системы: WebView получает prefers-color-scheme: dark, и игра включает свою тёмную палитру -->
+<resources>
+    <style name="Theme.Anamnez" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/paper</item>
+        <item name="android:navigationBarColor">@color/paper</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorPrimary">@color/stamp</item>
+        <item name="android:colorAccent">@color/stamp</item>
+    </style>
+</resources>

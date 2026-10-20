@@ -1,0 +1,63 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Номер версии = число коммитов: каждая новая сборка ставится поверх старой, сохранения остаются
+def commitCount = { ->
+    try {
+        return providers.exec { commandLine 'git', 'rev-list', '--count', 'HEAD' }.standardOutput.asText.get().trim().toInteger()
+    } catch (Exception ignored) {
+        return 1
+    }
+}()
+
+android {
+    namespace 'io.github.pozornyk3000.anamnez'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.github.pozornyk3000.anamnez'
+        minSdk 24
+        targetSdk 35
+        versionCode commitCount
+        versionName "1.0.${commitCount}"
+    }
+
+    // Ключ лежит в репозитории намеренно: так любая сборка (локальная или в GitHub Actions)
+    // подписана одинаково и обновление ставится поверх, не стирая сохранения.
+    // Для публикации в магазине приложений замените его своим и уберите пароли отсюда.
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore/anamnez.jks')
+            storePassword 'anamnez-game'
+            keyAlias 'anamnez'
+            keyPassword 'anamnez-game'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+// Игра (HTML, шрифты, иконки) собирается отдельно: node tools/build.mjs --site android/app/src/main/assets/www
+tasks.named('preBuild') {
+    doFirst {
+        if (!file('src/main/assets/www/index.html').exists()) {
+            throw new GradleException('Нет src/main/assets/www/index.html. Сначала выполните из корня репозитория: node tools/build.mjs --site android/app/src/main/assets/www')
+        }
+    }
+}

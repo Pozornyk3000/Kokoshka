@@ -349,6 +349,37 @@
     else UI.render();
   });
 
+  /** Системная кнопка «назад» (приложение для Android). true — обработано внутри игры,
+      false — пусть приложение свернётся. Во время пары, приёма или экзамена назад не уходим. */
+  UI.back = function () {
+    const v = UI.view;
+    if (v.confirm || v.picker) {
+      v.confirm = null;
+      v.picker = null;
+      UI.render();
+      return true;
+    }
+    if (v.screen === 'about' || v.screen === 'create') {
+      v.screen = null;
+      UI.render({ scroll: 'top' });
+      return true;
+    }
+    const s = A.state;
+    if (!s || s.activity) return false;
+    if (v.tab === 'ref' && v.refItem != null) {
+      v.refItem = null;
+      UI.render();
+      return true;
+    }
+    if (v.tab !== 'hub') {
+      v.tab = 'hub';
+      v.refItem = null;
+      UI.render({ scroll: 'top' });
+      return true;
+    }
+    return false;
+  };
+
   UI.afterAction = function (beforeKey) {
     const s = A.state;
     const moved = s.day * 4 + s.slot !== beforeKey;

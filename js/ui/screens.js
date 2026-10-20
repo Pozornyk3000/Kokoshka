@@ -137,6 +137,7 @@
           '**Если тяжело вам самим** — обратитесь к врачу или позвоните: **112** — экстренные службы; **8-800-2000-122** — бесплатный телефон доверия для детей, подростков и их родителей.'
       ) +
       '</div>' +
+      (S.appVersion() ? '<p class="dim small">Версия приложения ' + U.esc(S.appVersion()) + '</p>' : '') +
       '<button type="button" class="btn primary wide" data-act="about-back">Понятно</button>' +
       '</main>'
     );
@@ -333,6 +334,23 @@
   };
 
   /* ---------- Меню ---------- */
+  S.canShare = function () {
+    const app = window.AnamnezAndroid;
+    if (app && app.shareText) return true;
+    try {
+      return !!navigator.share && window.top === window;
+    } catch (e) {
+      return false;
+    }
+  };
+  S.appVersion = function () {
+    const app = window.AnamnezAndroid;
+    try {
+      return app && app.version ? String(app.version()) : '';
+    } catch (e) {
+      return '';
+    }
+  };
   S.menu = function (s) {
     const prefs = A.store.prefs();
     const cloud = A.store.cloudState;
@@ -341,8 +359,12 @@
       UI.hud(s) +
       '<main class="wrap menu"><h1 class="display page-h">Меню</h1>' +
       '<section class="card"><h2 class="h2">Сохранение</h2><p class="dim">' +
-      (cloud === 'on' ? 'Игра сохраняется автоматически: в этом браузере и в вашем личном облачном разделе Claude.' : 'Игра сохраняется автоматически в этом браузере. Чтобы перенести её на другое устройство, скопируйте код сохранения.') +
-      '</p><div class="row-btns"><button type="button" class="btn" data-act="export">Скопировать код сохранения</button></div>' +
+      (cloud === 'on'
+        ? 'Игра сохраняется автоматически: в этом браузере и в вашем личном облачном разделе Claude.'
+        : 'Игра сохраняется автоматически ' + (window.AnamnezAndroid ? 'в приложении на этом телефоне' : 'в этом браузере') + '. Чтобы перенести её на другое устройство, скопируйте код сохранения.') +
+      '</p><div class="row-btns"><button type="button" class="btn" data-act="export">Скопировать код сохранения</button>' +
+      (S.canShare() ? '<button type="button" class="btn ghost" data-act="share-code">Отправить код</button>' : '') +
+      '</div>' +
       '<label class="field" for="import-code"><span class="label">Загрузить из кода</span><textarea id="import-code" rows="2" placeholder="ANM1…"></textarea></label>' +
       '<div class="row-btns"><button type="button" class="btn" data-act="import">Загрузить</button></div>' +
       (UI.view.exportCode ? '<label class="field" for="export-code"><span class="label">Ваш код</span><textarea id="export-code" rows="3" readonly>' + U.esc(UI.view.exportCode) + '</textarea></label>' : '') +
@@ -358,6 +380,18 @@
     const code = A.store.exportCode(A.state);
     UI.view.exportCode = code;
     const done = () => UI.toast('Код сохранения скопирован');
+    const app = window.AnamnezAndroid;
+    if (app && app.copyText) {
+      let ok = false;
+      try {
+        ok = app.copyText(code);
+      } catch (e) {
+        ok = false;
+      }
+      UI.render();
+      if (ok) done();
+      return;
+    }
     try {
       navigator.clipboard.writeText(code).then(done, () => {
         UI.render();
@@ -366,6 +400,18 @@
       });
     } catch (e) {
       UI.render();
+    }
+    UI.render();
+  });
+  UI.on('share-code', () => {
+    const code = A.store.exportCode(A.state);
+    UI.view.exportCode = code;
+    const app = window.AnamnezAndroid;
+    try {
+      if (app && app.shareText) app.shareText(code);
+      else if (navigator.share) navigator.share({ title: 'Анамнез: код сохранения', text: code }).catch(() => {});
+    } catch (e) {
+      /* поделиться не вышло — код всё равно показан ниже */
     }
     UI.render();
   });

@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 /* Автоигрок: проходит игру через интерфейс в headless Chromium и ловит ошибки.
-   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] */
+   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart]
+   Внутри приложения Android (WebView с отладкой, проброшенной через adb forward):
+   node tools/autoplay.cjs - 300 --cdp http://127.0.0.1:9222 --smart */
 const path = require('path');
 const fs = require('fs');
-const { chromium } = require('playwright');
+let pw;
+try {
+  pw = require('playwright');
+} catch (e) {
+  pw = require('playwright-core');
+}
+const { chromium } = pw;
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => (argv.includes(n) ? argv[argv.indexOf(n) + 1] : d);
@@ -14,17 +22,32 @@ const seed = +flag('--seed', 1);
 const maxDays = +flag('--days', 999);
 if (shots) fs.mkdirSync(shots, { recursive: true });
 
+const cdp = flag('--cdp', null);
+
 (async () => {
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: argv.includes('--dark') ? 'dark' : 'light' });
-  const page = await ctx.newPage();
+  let browser;
+  let page;
+  if (cdp) {
+    browser = await chromium.connectOverCDP(cdp);
+    const pages = browser.contexts().flatMap((c) => c.pages());
+    page = pages.find((p) => /appassets|index\.html/.test(p.url())) || pages[0];
+    if (!page) throw new Error('В WebView нет страницы');
+    console.log('Подключено к', page.url());
+  } else {
+    browser = await chromium.launch();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: argv.includes('--dark') ? 'dark' : 'light' });
+    page = await ctx.newPage();
+  }
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')));
   page.on('console', (m) => {
     if (m.type() === 'error' && !/ERR_FILE_NOT_FOUND|fonts\.g|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text());
   });
-  const url = /^(https?|file):/.test(page_) ? page_ : 'file://' + path.resolve(page_);
-  await page.goto(url);
+  if (!cdp) {
+    const url = /^(https?|file):/.test(page_) ? page_ : 'file://' + path.resolve(page_);
+    await page.goto(url);
+  }
+  await page.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'), null, { timeout: 30000 });
   await page.waitForTimeout(400);
   await page.evaluate((sd) => {
     let x = sd >>> 0;
@@ -39,7 +62,7 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
 
   const shot = async (name) => {
     if (!shots) return;
-    await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: true });
+    await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: !cdp }).catch((e) => console.log('screenshot failed:', e.message));
   };
   const click = async (sel) => {
     for (let k = 0; k < 3; k++) {
@@ -283,7 +306,7 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
     console.log('ОШИБКИ (' + errors.length + '):');
     [...new Set(errors)].slice(0, 30).forEach((e) => console.log(' - ' + e));
   } else console.log('Ошибок нет.');
-  await browser.close();
+  if (!cdp) await browser.close();
   process.exit(errors.length ? 1 : 0);
 })().catch((e) => {
   console.error(e);
