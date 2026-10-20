@@ -6,7 +6,7 @@
   'use strict';
   const K = A.art && A.art._kit;
   if (!K) return;
-  const { SC, NAMES, W, H, P, rr, pk, dk, lt, INK, MINT, CORAL, MUSTARD, COAT, COATD, SKIN, HAIRC, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, rad, glow, clip, pattern, lampOn, LGT, sky, tree, win, sunPatch, curtain, rod, radiator, wall, floor, fluoro, books, flushBooks, bookcase, plant, mug, kettle, clockFace, SLOT_HM, framed, diploma, person } = K;
+  const { SC, NAMES, W, H, P, f, nid, rr, pk, dk, lt, INK, MINT, CORAL, MUSTARD, COAT, COATD, SKIN, HAIRC, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, sh, lin, rad, glow, clip, pattern, lampOn, LGT, sky, win, sunPatch, curtain, rod, radiator, wall, floor, fluoro, deskLamp, books, flushBooks, plant, mug, clockFace, SLOT_HM, framed, diploma, person } = K;
 
   /* ---------- Общие помощники этого файла ---------- */
   const YOUNG = HAIRC.slice(0, 5).concat(['#A4532E']);
@@ -74,11 +74,6 @@
       }
     }
     return (d ? PA(d, c.k(c.slot >= 2 ? '#3A4266' : '#A9BACB')) : '') + (lit ? PA(lit, '#FFD27A') : '');
-  }
-
-  /** Короткая надпись-табличка: (x, y) — центр. */
-  function plate(x, y, w, h, str, size, bg, fg, e) {
-    return R(x - w / 2 + 0.8, y - h / 2 + 1, w, h, INK, O(0.18)) + RR(x - w / 2, y - h / 2, w, h, 1, bg) + TX(x, y + size * 0.36, str, size, fg, e);
   }
 
   /** Стул (вид спереди или сзади): x — центр, gy — пол. */
@@ -378,20 +373,29 @@
     // светильники
     s += globeLamp(c, 118, 22, 7) + globeLamp(c, 282, 22, 7);
     // экзаменаторы
-    s += sitter(c, 148, 156, { s: 1.05, coat: true, style: 'bun', hair: '#5E412E', skin: '#EBC6A8', glasses: true, hands: 'table', top: '#8E5A7C', smile: true });
-    s += sitter(c, 254, 156, { s: 1.08, coat: true, style: 'bald', hair: '#8D8883', skin: '#E2B48F', hands: 'table', top: '#3F4B66', beard: '#9C958E' });
+    s += sitter(c, 142, 159, { s: 1.2, coat: true, style: 'bun', hair: '#5E412E', skin: '#EBC6A8', glasses: true, hands: 'table', top: '#8E5A7C', smile: true });
+    s += sitter(c, 258, 159, { s: 1.22, coat: true, style: 'bald', hair: '#8D8883', skin: '#E2B48F', hands: 'table', top: '#3F4B66', beard: '#9C958E' });
     // стол с зелёным сукном
     const cloth = '#3F7A55';
     s += sh(200, 196, 170, 6, 0.22);
     s += PG([[54, 138], [346, 138], [356, 148], [44, 148]], '#4E8F62');
     s += R(44, 148, 312, 44, lin(c, [[0, cloth], [1, '#2F5E42']]));
     let fd = '';
-    for (let x = 64; x < 350; x += 26) fd += P`M${x} 150Q${x + 2} 170 ${x - 1} 191`;
-    s += SK(fd, '#2A5039', 1.2, O(0.55)) + R(44, 148, 312, 2, '#2A5039', O(0.6)) + R(44, 189, 312, 3, '#E9B949', O(0.7));
+    let fl = '';
+    for (let x = 64; x < 350; x += 26) {
+      fd += P`M${x} 150Q${x + 2} 170 ${x - 1} 190`;
+      fl += P`M${x + 3} 151Q${x + 5} 170 ${x + 2.4} 189`;
+    }
+    s += SK(fd, '#24452F', 1.3, O(0.6)) + SK(fl, '#6FAE84', 1, O(0.35)) + R(44, 148, 312, 2, '#2A5039', O(0.6));
+    let hem = '';
+    for (let x = 44; x < 356; x += 6) hem += P`M${x} 189v3.4a3 2.4 0 0 0 6 0V189z`;
+    s += PA(hem, '#C9A247') + R(44, 188, 312, 1.4, '#E9C866');
+    // ковровая дорожка
+    s += PG([[150, 197], [250, 197], [292, 225], [108, 225]], '#9E3B34') + PA('M156 199.5H244L281 225H119Z', 'none', 'stroke="#E2B04A" stroke-width="1.2"') + PA('M163 203H237L266 225H134Z', 'none', 'stroke="#7A2A26" stroke-width=".8"');
     // веер билетов
     let fan = '';
     for (let i = 0; i < 9; i++) fan += G(R(-4.5, -16, 9, 14, '#FBF8F0', 'stroke="#B9B2A4" stroke-width=".4"') + R(-2.5, -13.5, 5, 1, '#8A93A3'), 'transform="rotate(' + (-64 + i * 16) + ')"');
-    s += G(fan, 'transform="translate(200 146) scale(1 .5)"');
+    s += G(fan, 'transform="translate(200 147) scale(1.15 .58)"');
     // зачётки, бумаги, ручка
     s += PG([[98, 141], [118, 141], [119, 146], [96, 146]], '#2F3B5C') + PG([[99, 139], [117, 139], [118, 143.5], [97, 143.5]], '#3F4B66') + PG([[100, 137], [116, 137], [117, 141], [99, 141]], '#2F3B5C');
     s += PG([[222, 140], [246, 140], [248, 146], [220, 146]], '#F7F3EA') + SK('M226 142.4H242M226 144H238', '#9AA0AA', 0.5) + SK('M250 141L262 139', '#2A2F3C', 0.9);
@@ -407,5 +411,193 @@
     return s;
   };
 
-  void [W, H, CORAL, COAT, COATD, E, PA, LN, pattern, lampOn, LGT, win, sunPatch, curtain, rod, radiator, wall, floor, books, flushBooks, bookcase, mug, kettle, framed, diploma, plate, chair];
+  /* ---------- Книги через <use>: несколько рядов-образцов на всю сцену ---------- */
+  function bookRowDefs(c, n, w, h) {
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      books(c, 0, h, w, h - 2);
+      const id = nid(c, 'b');
+      c.defs.push('<g id="' + id + '">' + flushBooks(c) + '</g>');
+      ids.push(id);
+    }
+    return ids;
+  }
+  const useAt = (id, x, y, flip, w) => '<use href="#' + id + '" ' + (flip ? 'transform="translate(' + f(x + w) + ' ' + f(y) + ') scale(-1 1)"' : 'x="' + f(x) + '" y="' + f(y) + '"') + '/>';
+
+  /** Высокий стеллаж из рядов-образцов ids (ширина ряда = w − 2t). */
+  function shelf(c, ids, x, y, w, h, rows, k) {
+    const t = 3.5;
+    const wood = '#6B4530';
+    const rh = (h - t) / rows;
+    let s = sh(x + w / 2, y + h, w * 0.55, 2.4) + R(x, y, w, h, wood) + R(x + t, y + t, w - 2 * t, h - 2 * t, '#2E2019');
+    let boards = '';
+    for (let i = 0; i < rows; i++) {
+      const top = y + t + i * rh;
+      const id = ids[(i * 3 + k) % ids.length];
+      s += useAt(id, x + t, top + rh - t - 25, (i + k) % 2 === 1, w - 2 * t);
+      boards += P`M${x} ${top + rh - t}h${w}v${t}h${-w}z`;
+    }
+    s += PA(boards, '#7E5438') + R(x, y, w, 3, '#8A5A3C') + R(x - 2, y - 4, w + 4, 5, '#7A4E34') + R(x, y, 1.6, h, '#9C6B4C', O(0.6)) + R(x + w - 1.6, y, 1.6, h, '#3A2418', O(0.4));
+    return s;
+  }
+
+  /** Классическая «банковская» лампа с зелёным абажуром: (x, y) — основание на столе. */
+  function bankLamp(c, x, y, s) {
+    s = s || 1;
+    const brass = '#C9A247';
+    let g = E(0, -1, 8, 2, dk(brass, 0.3)) + RR(-7.5, -3.6, 15, 3, 1.5, brass) + R(-0.9, -15, 1.8, 12, brass) + R(-6, -15.6, 12, 1.4, dk(brass, 0.15));
+    g += PA('M-14 -15.6C-14 -23 14 -23 14 -15.6Z', '#2F7A4E') + PA('M-11 -17.6C-10 -21.4 -3 -22 2 -21.6C-4 -20.6 -8 -19.6 -11 -17.6Z', '#7FC49A', O(0.6));
+    g += E(0, -15.6, 14, 1.6, '#1C4A31') + SK('M5 -15.4v5', '#8C7A4A', 0.5) + C(5, -9.8, 0.9, brass);
+    let out = G(g, T(x, y, s));
+    const k = Math.max(0.5, LGT(c));
+    c.lights.push(glow(c, x, y - 4 * s, 58 * s, 16 * s, '#FFD98A', 0.6 * k) + glow(c, x, y - 14 * s, 46 * s, 34 * s, '#FFE6A8', 0.22 * k) + glow(c, x, y - 17 * s, 18 * s, 8 * s, '#B8F0C8', 0.35 * k) + E(x, y - 15.6 * s, 14 * s, 1.6 * s, '#FFF2C8'));
+    return out;
+  }
+
+  /* ======================================================================
+     Библиотека
+     ====================================================================== */
+  NAMES.library = 'Библиотека';
+  SC.library = function (c) {
+    c.indoor = true;
+    const fy = 180;
+    const wallc = '#E4D3B4';
+    let s = wall(c, 0, fy, wallc);
+    s += R(0, 0, W, 9, '#CDB892') + R(0, 8, W, 2, '#A8875E');
+    s += floor(c, fy, '#8E5E3A', { n: 26, cross: 0.18, gloss: true });
+    // арочное окно в центре
+    s += win(c, 160, 26, 80, 118, { arch: true, view: 'yard', wall: wallc, v: [0.5], h: [0.42], frame: '#EFEAE0', ft: 2.6 });
+    sunPatch(c, 160, 80, fy, 44);
+    // стеллажи
+    const ids = bookRowDefs(c, 4, 63, 26);
+    s += shelf(c, ids, -4, 14, 70, fy - 14, 6, 0) + shelf(c, ids, 72, 14, 70, fy - 14, 6, 1);
+    s += shelf(c, ids, 258, 14, 70, fy - 14, 6, 2) + shelf(c, ids, 334, 14, 70, fy - 14, 6, 3);
+    // приставная лестница
+    s += SK('M84 182L104 18M100 184L120 20', '#A0704A', 2.2);
+    let rung = '';
+    for (let i = 1; i < 11; i++) {
+      const t = i / 11;
+      rung += P`M${84 + 20 * t} ${182 - 164 * t}H${100 + 20 * t}`;
+    }
+    s += SK(rung, '#A0704A', 1.6) + sh(92, 183, 14, 2);
+    // длинный стол
+    s += sh(200, 212, 172, 6, 0.24);
+    s += PG([[44, 150], [356, 150], [370, 162], [30, 162]], '#9C6B44') + PG([[60, 151.5], [340, 151.5], [350, 160.5], [50, 160.5]], '#3F6E50', O(0.85));
+    s += R(30, 162, 340, 7, '#6E4A2E') + R(30, 169, 340, 1.6, INK, O(0.25));
+    s += R(38, 169, 7, 44, '#5E3E26') + R(355, 169, 7, 44, '#5E3E26') + R(66, 169, 4, 22, '#4A3020') + R(330, 169, 4, 22, '#4A3020');
+    // читатели за дальним краем
+    s += sitter(c, 152, 172, { s: 1.1, style: 'long', hair: '#433026', skin: '#F2D0B4', top: '#8E5A7C', hands: 'table' });
+    s += sitter(c, 262, 172, { s: 1.1, style: 'short', hair: '#2B2220', skin: '#DBA77F', top: '#5B7C99', hands: 'table', glasses: true });
+    // книги на столе
+    const ob = (x, y, w, col) => PA(P`M${x - w} ${y}L${x - w + 2} ${y - 5}Q${x - w / 2} ${y - 6.4} ${x} ${y - 5}Q${x + w / 2} ${y - 6.4} ${x + w - 2} ${y - 5}L${x + w} ${y}Q${x + w / 2} ${y - 1.4} ${x} ${y}Q${x - w / 2} ${y - 1.4} ${x - w} ${y}Z`, '#FBF6EA') + SK(P`M${x} ${y - 5}V${y}`, '#C9C2B4', 0.5) + R(x - w, y, 2 * w, 1.2, col);
+    s += ob(152, 159, 11, '#8E3B3B') + ob(262, 159, 11, '#2F3B5C');
+    s += R(222, 153, 22, 3.4, '#5B7C99') + R(224, 149.8, 19, 3.2, '#C8553D') + R(221, 146.8, 21, 3, '#E9B949') + R(225, 144, 16, 2.8, '#4E6B5A');
+    s += PG([[108, 154], [126, 154], [128, 158], [106, 158]], '#F7F3EA') + SK('M112 155.5H122', '#9AA0AA', 0.5);
+    // зелёные лампы
+    s += bankLamp(c, 96, 158, 1.05) + bankLamp(c, 200, 154, 0.95) + bankLamp(c, 318, 158, 1.05);
+    // читатель спиной к нам
+    const bb = bustBatch();
+    bust(c, bb, 120, 214, 1.45, { style: 'bun', hair: '#C49E68', top: '#D98E5F', skin: '#F2D0B4', ext: 14 });
+    s += bustFlush(bb, 1.45);
+    s += chair(120, 262, 1.2, '#5E3E26', true);
+    return s;
+  };
+
+  /** Стопка медицинских карт: x — левый край, y — низ, n — число карт. */
+  function cards(c, x, y, w, n) {
+    let d = '';
+    let tabs = {};
+    let yy = y;
+    for (let i = 0; i < n; i++) {
+      const th = rr(c, 1.6, 2.6);
+      const dx = rr(c, -1.6, 1.6);
+      d += rD(x + dx, yy - th, w, th - 0.35);
+      if (c.r() < 0.55) {
+        const col = pk(c, ['#C8553D', '#5B7C99', '#7FAE9A', '#E9B949', '#8E5A7C']);
+        tabs[col] = (tabs[col] || '') + rD(x + dx + rr(c, 2, w - 8), yy - th, 5, th - 0.35);
+      }
+      yy -= th;
+    }
+    let s = sh(x + w / 2, y, w * 0.7, 1.6) + R(x - 1.6, yy, w + 3.2, y - yy, '#B7A88A') + PA(d, '#EDE2C6');
+    for (const k in tabs) s += PA(tabs[k], k);
+    return s + R(x - 1.6, yy - 0.4, w + 3.2, 0.8, '#FFFFFF', O(0.4));
+  }
+
+  /* ======================================================================
+     Кабинет врача ПНД
+     ====================================================================== */
+  NAMES.office = 'Кабинет врача ПНД';
+  SC.office = function (c) {
+    c.indoor = true;
+    const fy = 176;
+    const wallc = '#E9EAE2';
+    let s = wall(c, 0, fy, wallc);
+    s += R(0, 108, W, fy - 108, lin(c, [[0, '#BFD0D3'], [1, '#AFC2C6']])) + R(0, 106.5, W, 2, '#9DB1B5') + R(0, 108.5, W, 1, '#FFFFFF', O(0.35));
+    s += floor(c, fy, '#A39A82', { n: 14, cross: 0.24, lo: 0.3 });
+    s += fluoro(c, 150, 1, 100, c.slot !== 1);
+    // окно с жалюзи и батарея
+    s += win(c, 64, 26, 92, 80, { view: 'street', wall: wallc, v: [0.5], h: [0.32], blinds: 0.56, blindCol: '#E9ECEA' });
+    sunPatch(c, 64, 92, fy, 40);
+    s += radiator(76, 120, 68, 22);
+    s += plant(c, 80, 107.5, 'small', 0.8, { pot: '#E9DCC6' });
+    // шкаф с папками слева
+    s += sh(30, fy + 4, 30, 2.6) + R(2, 50, 54, fy - 48, '#C9B496') + R(5, 54, 48, 70, '#E9EEF0') + R(5, 128, 48, fy - 132, '#B9A283');
+    let bd = '';
+    const bcol = ['#5B7C99', '#C8553D', '#7FAE9A', '#E9B949', '#3F4B66', '#8E5A7C'];
+    for (let r0 = 0; r0 < 2; r0++) {
+      for (let i = 0; i < 7; i++) s += R(7 + i * 6.4, 58 + r0 * 34, 5.6, 28, bcol[(i + r0 * 2) % 6]) + R(8.4 + i * 6.4, 64 + r0 * 34, 2.8, 5, '#FFFFFF', O(0.85));
+      bd += P`M5 ${87 + r0 * 34}h48v2.2h-48z`;
+    }
+    s += PA(bd, '#B9A283') + R(5, 54, 48, 70, lin(c, [[0, '#FFFFFF', 0.25], [0.5, '#FFFFFF', 0.05], [1, '#FFFFFF', 0.2]], [0, 0, 1, 1])) + SK('M29 54V124', '#B9A283', 1.6) + SK('M29 128V172', '#9C876A', 1) + R(25, 146, 2, 8, '#6E5A44') + R(31, 146, 2, 8, '#6E5A44');
+    // календарь и дипломы
+    s += R(201, 24, 1.4, 4, '#6A6A66');
+    const cal = { autumn: ['ОКТЯБРЬ', '#E9C27A', '#C8703A'], winter: ['ДЕКАБРЬ', '#BFD1E5', '#F4F7FA'], spring: ['АПРЕЛЬ', '#BFE0D0', '#7FB56A'], summer: ['ИЮНЬ', '#9CC9E6', '#4E8F5A'] }[c.season] || ['ОКТЯБРЬ', '#E9C27A', '#C8703A'];
+    s += R(185, 27, 36, 50, '#FBFAF6') + R(185, 27, 36, 50, 'none', 'stroke="#C9C6BC" stroke-width=".5"') + R(188, 30, 30, 17, cal[1]) + PG([[188, 47], [198, 37], [206, 44], [212, 39], [218, 47]], cal[2]) + C(212, 34, 2.4, c.winter ? '#FFFFFF' : MUSTARD);
+    s += R(188, 49, 30, 4, '#C8553D') + TX(203, 52.2, cal[0], 3, '#FFFFFF');
+    let cg = '';
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 7; i++) cg += rD(188.6 + i * 4.2, 55.6 + j * 4.8, 2.8, 2.6);
+    s += PA(cg, '#B9BEC6') + C(201.8, 62.9, 2.6, 'none', 'stroke="#C8553D" stroke-width=".7"');
+    s += diploma(240, 34, 26, 20) + diploma(272, 38, 20, 16, '#6B4E3A');
+    // вешалка с белым халатом
+    const hx = 372;
+    s += sh(hx, fy + 10, 18, 3) + E(hx, fy + 9, 13, 3, '#3A3F4A') + R(hx - 1.6, 30, 3.2, fy - 22, '#4A4F5C') + SK(P`M${hx} 36l-9 -6M${hx} 36l9 -6M${hx} 42l-7 -3`, '#4A4F5C', 1.6) + C(hx, 29, 2.6, '#4A4F5C');
+    s += SK(P`M${hx - 12} 46Q${hx} 38 ${hx + 12} 46`, '#8C7E6E', 1.2);
+    s += PA(P`M${hx - 13} 46Q${hx} 41 ${hx + 13} 46L${hx + 17} 128H${hx - 17}Z`, COAT) + PA(P`M${hx - 13} 46L${hx - 19} 108L${hx - 13} 110L${hx - 9} 60Z`, '#E7ECEA') + PA(P`M${hx + 13} 46L${hx + 19} 108L${hx + 13} 110L${hx + 9} 60Z`, '#E7ECEA');
+    s += SK(P`M${hx - 6} 44L${hx} 62L${hx + 6} 44M${hx} 62V128M${hx - 12} 98h7M${hx + 5} 98h7M${hx + 5} 70h6`, COATD, 0.9) + R(hx + 5.6, 66, 1, 4, '#4C6A9A') + RR(hx - 11, 68, 7, 4, 0.8, '#5B7C99');
+    // кресло врача за столом
+    s += RR(188, 86, 40, 46, 9, '#2F3542') + RR(192, 90, 32, 36, 7, '#3A4252') + R(181, 118, 6, 14, '#2A2F3A') + R(229, 118, 6, 14, '#2A2F3A');
+    // монитор, повёрнутый к зрителю
+    s += R(152, 120, 4, 10, '#3A3F4A') + E(154, 131, 11, 2, '#2A2F3A');
+    s += PG([[130, 94], [176, 98], [176, 124], [130, 127]], '#2A2F3A') + PG([[176, 98], [180, 99], [180, 123], [176, 124]], '#454B5A');
+    const scr =
+      PG([[132.5, 96.6], [173.6, 100.1], [173.6, 121.9], [132.5, 124.5]], '#E6EEF4') +
+      PG([[132.5, 96.6], [173.6, 100.1], [173.6, 104], [132.5, 101]], '#4C6A9A') +
+      PG([[134, 103], [146, 104], [146, 122.5], [134, 123.2]], '#C9D6E2') +
+      SK('M149 106.6L170 108.2M149 110.4L166 111.8M149 114.2L170 115.6M149 118L162 119', '#8A97A8', 0.9);
+    if (c.slot >= 2) c.lights.push(glow(c, 153, 112, 46, 34, '#CFE2FF', c.slot === 3 ? 0.4 : 0.28) + scr + glow(c, 153, 140, 30, 6, '#CFE2FF', 0.3));
+    else s += scr;
+    // стол
+    s += sh(206, fy + 12, 110, 5, 0.2);
+    s += PG([[104, 128], [308, 128], [314, 138], [98, 138]], '#C9A27A') + R(98, 138, 216, 4, '#9C7650') + R(102, 142, 208, fy + 8 - 142, '#B48C62') + R(102, 142, 208, 2, INK, O(0.18));
+    s += SK('M150 146V' + (fy + 6) + 'M254 146V' + (fy + 6), '#9C7650', 1) + R(102, fy + 8, 208, 2, '#7E5C3A');
+    // клавиатура, мышь, кружка, ручки
+    s += PG([[138, 131], [174, 131], [177, 136], [135, 136]], '#3A3F4A') + PG([[140, 131.8], [172, 131.8], [174, 134.8], [138, 134.8]], '#5A6070') + E(184, 134, 2.6, 1.6, '#3A3F4A');
+    s += mug(118, 136, '#7FAE9A', c.slot !== 1) + R(124, 126, 7, 10, '#5B7C99') + SK('M125.6 126L124.4 119M127.6 126L128.4 118.6M129.6 126L131.6 120', '#2A2F3C', 0.8);
+    // стопки медицинских карт
+    s += cards(c, 236, 136, 22, 12) + cards(c, 262, 136, 22, 8) + cards(c, 196, 136, 18, 4);
+    // настольная лампа
+    s += deskLamp(c, 300, 134, { col: '#3F4B66', s: 0.92 });
+    // табличка на столе
+    s += PG([[178, 137], [228, 137], [226, 129], [180, 129]], '#2F3B5C') + R(178, 136.4, 50, 1.4, '#1E2944') + TX(203, 135, 'ВРАЧ-ПСИХИАТР', 4.2, '#F3E7C4');
+    // кулер с водой
+    const qx = 336;
+    s += sh(qx, 200, 16, 2.6) + RR(qx - 12, 148, 24, 52, 2.5, '#E9ECEC') + R(qx - 12, 148, 24, 3, '#D5DADB') + R(qx - 9, 160, 18, 14, '#C9D0D2') + R(qx - 6, 158, 3, 4, '#C8553D') + R(qx + 3, 158, 3, 4, '#5B7C99') + R(qx - 8, 172, 16, 1.6, '#9AA3A6') + R(qx - 11, 196, 22, 4, '#BFC6C8');
+    s += PA(P`M${qx - 7} 147V136Q${qx - 11} 132 ${qx - 10} 124Q${qx - 10} 116 ${qx} 116Q${qx + 10} 116 ${qx + 10} 124Q${qx + 11} 132 ${qx + 7} 136V147Z`, '#8EC1DE', O(0.85)) + R(qx - 9, 126, 18, 1.6, '#6FA6C8', O(0.8)) + SK(P`M${qx - 6} 120Q${qx - 8} 126 ${qx - 6} 134`, '#FFFFFF', 1.2, O(0.6));
+    s += R(qx + 12, 154, 6, 18, '#F4F1EA') + R(qx + 12.5, 154, 5, 1.6, '#D5DADB');
+    // стул для пациента перед столом и корзина для бумаг
+    s += chair(240, 228, 1.08, '#7A5A44', true);
+    s += sh(80, 196, 11, 2) + PA('M71 178H89L87 196H73Z', '#6E8A96') + E(80, 178, 9, 1.8, '#4E6670') + R(72, 182, 16.6, 1, '#FFFFFF', O(0.2)) + C(77, 177, 2.6, '#F4F1EA') + C(82, 176.4, 2.2, '#E9E3D6');
+    return s;
+  };
+
 })((window.A = window.A || {}));

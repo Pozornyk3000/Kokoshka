@@ -6,7 +6,7 @@
   'use strict';
   const K = A.art && A.art._kit;
   if (!K) return;
-  const { SC, NAMES, P, f, rr, pk, dk, lt, mix, INK, MINT, MINTD, CREAM, CORAL, MUSTARD, COAT, WOODD, SKIN, HAIRC, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, rad, glow, clip, pattern, lampOn, LGT, sky, win, sunPatch, curtain, rod, radiator, wall, floor, deskLamp, floorLamp, fluoro, bookcase, books, flushBooks, leafD, plant, mug, clockFace, SLOT_HM, framed, diploma, person } = K;
+  const { SC, NAMES, P, f, pk, dk, lt, INK, MINTD, CORAL, MUSTARD, COAT, SKIN, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, rad, glow, clip, pattern, lampOn, LGT, win, view, kettle, sunPatch, curtain, rod, wall, floor, deskLamp, floorLamp, fluoro, bookcase, plant, mug, clockFace, SLOT_HM, framed, diploma, person } = K;
 
   /* ---------- Одноточечная перспектива ----------
      X — поперёк (м), Y — вверх от пола (м), Z — вглубь (м). (vx, vy) — точка схода, eye — высота глаз, cx — смещение камеры. */
@@ -50,6 +50,9 @@
     const UP = '#F2F0E8';
     const night = c.slot === 3;
     const fv = p(0, 0, ZF);
+    // случайные детали — до всего остального, чтобы не зависели от времени суток
+    const base = 10 + 2 * Math.floor(c.r() * 6);
+    const litDoor = Math.floor(c.r() * 4) + 1;
     let s = '';
     // потолок, пол, торцевая стена
     s += p.flat(HT, XL, XR, 0, ZF, lin(c, [[0, '#C9CDC9'], [1, '#E8E7E1']], [0, -20, 0, 70], true));
@@ -74,7 +77,6 @@
     s += p.wall(XL, PL - 0.03, PL + 0.03, 0, ZF, '#7FA593') + p.wall(XR, PL - 0.03, PL + 0.03, 0, ZF, '#7FA593');
     s += R(fl[0], fl[1] - 0.12 * q(ZF), fr[0] - fl[0], 0.12 * q(ZF), '#6F927F') + R(fl[0], pz[1] - 0.7, fr[0] - fl[0], 1.4, '#7FA593');
     // двери палат
-    const base = 10 + 2 * Math.floor(c.r() * 6);
     const doors = [
       { X: XL, z: 1.2, w: 1.25, n: base },
       { X: XL, z: 6.6, w: 1.1, n: base + 2 },
@@ -82,8 +84,7 @@
       { X: XR, z: 7.4, w: 1.1, n: base + 1 },
       { X: XR, z: 11.6, w: 1.1, n: base + 3 },
     ];
-    const litDoor = Math.floor(c.r() * 4) + 1;
-    let signs = [];
+    const signs = [];
     doors.forEach((d, i) => {
       const a = d.z;
       const b = d.z + d.w;
@@ -291,7 +292,7 @@
     const wh = 94;
     s += R(wx - 5, wy - 5, ww + 10, wh + 7, dk(wallc, 0.12));
     const cl = clip(c, R(wx, wy, ww, wh, '#000'));
-    s += G(K.view(c, wx, wy, ww, wh, 'street') + ambulance(c, wx + 22, wy + wh - 5, 0.72, flash) + (c.slot < 2 ? PG([[wx + 18, wy], [wx + 40, wy], [wx + 12, wy + wh], [wx - 10, wy + wh]], '#FFFFFF', O(0.12)) : ''), cl);
+    s += G(view(c, wx, wy, ww, wh, 'street') + ambulance(c, wx + 22, wy + wh - 5, 0.72, flash) + (c.slot < 2 ? PG([[wx + 18, wy], [wx + 40, wy], [wx + 12, wy + wh], [wx - 10, wy + wh]], '#FFFFFF', O(0.12)) : ''), cl);
     let bl = '';
     for (let yy = wy + 2; yy < wy + wh * 0.3; yy += 4) bl += P`M${wx} ${yy}h${ww}v2.6h${-ww}z`;
     s += PA(bl, '#EDEBE4', O(0.96)) + R(wx - 2, wy - 1, ww + 4, 3, '#DAD6CC') + LN(wx + ww * 0.82, wy, wx + ww * 0.82, wy + wh * 0.3 + 8, '#B9B4A8', 0.5);
@@ -306,8 +307,8 @@
     s += R(sx + 6, 44, 1.4, 6, '#8D979E') + R(sx + sw - 7.4, 44, 1.4, 6, '#8D979E');
     s += RR(sx + 1, 51.5, sw, 20, 2, INK, O(0.15)) + RR(sx, 50, sw, 20, 2, '#C8453A') + RR(sx + 2, 52, sw - 4, 16, 1.5, 'none', 'stroke="#F6D9D2" stroke-width=".6"');
     s += C(sx + 12, 60, 6, '#FFFFFF') + R(sx + 10.8, 55.6, 2.4, 8.8, '#C8453A') + R(sx + 7.6, 58.8, 8.8, 2.4, '#C8453A');
-    s += TX(sx + sw / 2 + 7, 63, 'ПРИЁМНОЕ ОТДЕЛЕНИЕ', 7.6, '#FFFFFF', 'font-weight="bold"');
-    if (lampOn(c)) c.lights.push(glow(c, sx + sw / 2, 60, 110, 38, '#FF6A55', 0.24 * LGT(c)) + G(RR(sx, 50, sw, 20, 2, '#D9503F') + C(sx + 12, 60, 6, '#FFFFFF') + R(sx + 10.8, 55.6, 2.4, 8.8, '#C8453A') + R(sx + 7.6, 58.8, 8.8, 2.4, '#C8453A') + TX(sx + sw / 2 + 7, 63, 'ПРИЁМНОЕ ОТДЕЛЕНИЕ', 7.6, '#FFFFFF', 'font-weight="bold"'), O(c.night ? 0.8 : 0.6)));
+    s += TX(sx + sw / 2 + 7, 63.2, 'ПРИЁМНОЕ ОТДЕЛЕНИЕ', 8.4, '#FFFFFF', 'font-weight="bold"');
+    if (lampOn(c)) c.lights.push(glow(c, sx + sw / 2, 60, 110, 38, '#FF6A55', 0.24 * LGT(c)) + G(RR(sx, 50, sw, 20, 2, '#D9503F') + C(sx + 12, 60, 6, '#FFFFFF') + R(sx + 10.8, 55.6, 2.4, 8.8, '#C8453A') + R(sx + 7.6, 58.8, 8.8, 2.4, '#C8453A') + TX(sx + sw / 2 + 7, 63.2, 'ПРИЁМНОЕ ОТДЕЛЕНИЕ', 8.4, '#FFFFFF', 'font-weight="bold"'), O(c.night ? 0.8 : 0.6)));
     // двустворчатые двери с круглыми окошками
     const dx = 158;
     const dw = 104;
@@ -400,7 +401,7 @@
     const wh = 86;
     s += win(c, wx, wy, ww, wh, { view: 'city', wall: wallc, v: [0.5], h: [0.3] });
     s += rod(10, 13, 122) + curtain(c, 12, 14, c.slot === 1 ? 40 : 24, 108, '#5C7F8F', 'l') + curtain(c, c.slot === 1 ? 92 : 108, 14, c.slot === 1 ? 38 : 22, 108, '#5C7F8F', 'r');
-    s += K.kettle(104, wy + wh + 1.5, '#F2F0EB');
+    s += kettle(104, wy + wh + 1.5, '#F2F0EB');
     if (c.slot === 3) c.lights.push(PG([[wx + 6, wy + wh + 8], [wx + ww - 6, wy + wh + 8], [wx + ww + 56, 225], [wx + 30, 225]], lin(c, [[0, '#BFD3FF', 0.1], [1, '#BFD3FF', 0]])));
     // кушетка под окном
     s += sh(66, 190, 60, 3.5, 0.2);
@@ -457,8 +458,187 @@
     // выключенная лампа дневного света
     s += fluoro(c, 160, 0, 90, false);
     // сумрак вокруг островка света лампы
-    s += R(0, 0, 400, 225, rad(c, [[0, '#0A1030', 0], [0.4, '#0A1030', 0.08], [1, '#0A1030', c.slot === 3 ? 0.5 : 0.32]], [0.45, 0.55, 0.72]));
+    s += R(0, 0, 400, 225, rad(c, [[0, '#0A1030', 0], [0.4, '#0A1030', 0.08], [1, '#0A1030', c.slot === 3 ? 0.58 : 0.32]], [0.45, 0.55, 0.72]));
     c.lights.push(glow(c, 190, 118, 120, 80, '#FFC66E', 0.16) + glow(c, 190, 186, 46, 8, '#FFD99A', 0.12));
+    return s;
+  };
+
+  /* ======================================================================
+     Кабинет частной клиники
+     ====================================================================== */
+  /** Кресло в профиль (смотрит вправо, flip — влево); (x, gy) — центр на полу. */
+  function armchair(x, gy, s, col, flip, pillow) {
+    const d = dk(col, 0.2);
+    const l = lt(col, 0.14);
+    let g = sh(0, 0, 32, 3, 0.24);
+    g += PA('M-23 -11L-21 0H-18L-17 -11Z', '#3E2618') + PA('M18 -11L19.5 0H22.5L23 -11Z', '#3E2618');
+    g += PA('M-31 -14C-34 -40 -32 -60 -27 -67Q-22 -71 -16 -67C-14 -52 -14 -32 -12 -14Z', d);
+    g += PA('M-28 -17C-30 -40 -28.5 -58 -25 -63.5Q-21.5 -66 -18.5 -62.5C-17 -48 -17 -32 -15.5 -17Z', col);
+    g += SK('M-24 -58l.1 0M-23 -48l.1 0M-22.5 -38l.1 0M-21 -54l.1 0M-20.5 -44l.1 0', d, 1.6);
+    if (pillow) g += G(RR(-7, -8, 14, 16, 4.5, pillow) + SK('M-4 -5l8 10M4 -5l-8 10', dk(pillow, 0.2), 0.7, O(0.5)), 'transform="translate(-10 -40) rotate(-14)"');
+    g += RR(-20, -40, 42, 8, 4, l);
+    g += PA('M-26 -12V-32Q-26 -37 -21 -37H17Q26 -37 26 -30.5Q26 -24.5 20 -24.5H19V-12Z', col);
+    g += PA('M-26 -14H19V-11H-26Z', d) + RR(-24, -35, 40, 2.4, 1.2, '#FFFFFF', O(0.14));
+    g += C(20, -30.5, 6, l) + PA('M20 -36.5A6 6 0 0 1 26 -30.5H22.6A2.6 2.6 0 0 0 20 -33.1Z', '#FFFFFF', O(0.12)) + C(20, -30.5, 2.4, d, O(0.55));
+    return G(g, T(x, gy, s, flip));
+  }
+  NAMES.private = 'Частная клиника, кабинет';
+  SC.private = function (c) {
+    c.indoor = true;
+    const fy = 168;
+    const wallc = '#56705F';
+    let s = wall(c, 0, fy, wallc, pattern(c, 6, 10, R(0, 0, 0.8, 10, '#FFFFFF', O(0.035))));
+    // карниз и панели нижней части стены
+    s += R(0, 0, 400, 5, '#EFE9DC') + R(0, 5, 400, 1.6, INK, O(0.12));
+    s += R(0, 110, 400, fy - 110, '#4C6656') + R(0, 108, 400, 3.4, '#EFE9DC') + R(0, 111.4, 400, 1, INK, O(0.12));
+    let mold = '';
+    for (let x = 4; x < 400; x += 44) mold += P`M${x} 118h36v42h-36z`;
+    s += SK(mold, '#6E8C7A', 0.9);
+    s += floor(c, fy, '#B07A4C', { n: 22, cross: 0.11, gloss: true, base: '#EFE9DC' });
+    // ковёр
+    s += PA('M94 182H352L394 224H52Z', '#9E4A3E') + PA('M102 185H344L380 221H66Z', 'none', 'stroke="#E9B949" stroke-width="1" stroke-dasharray="2.4 1.6"');
+    s += PA('M120 189H326L352 216H92Z', '#B85D45') + PA('M196 194H252L262 210H186Z', '#2F3B5C', O(0.8)) + PA('M212 197H238L242 207H208Z', '#E9B949', O(0.75));
+    s += PA('M120 189H326L352 216H92Z', 'none', 'stroke="#7E2E2C" stroke-width=".8"');
+    // книжный шкаф
+    s += bookcase(c, 8, 20, 72, 168, { wood: '#5A3A26', rows: 5 });
+    s += G(C(0, -6, 5, '#E9DFCB') + R(-5, -6, 10, 6, '#E9DFCB') + R(-6, -1, 12, 1.6, '#B8954E'), T(26, 20)) + RR(48, 13, 18, 7, 1.5, '#B8954E');
+    // окно в пол со льняными шторами
+    const wx = 104;
+    s += win(c, wx, 16, 98, 116, { view: 'city', wall: wallc, frame: '#2B3245', ft: 2.2, v: [0.5], h: [0.62], sillCol: '#E6DCCB' });
+    sunPatch(c, wx, 98, fy, 44);
+    s += rod(86, 9, 134) + curtain(c, 88, 10, 26, 156, '#E9DFCB', 'l') + curtain(c, 192, 10, 26, 156, '#E9DFCB', 'r');
+    // монстера
+    s += plant(c, 92, 190, 'monstera', 1.9, { pot: '#E8E1D3' });
+    // дипломы над кушеткой
+    s += diploma(240, 34, 28, 36) + diploma(276, 30, 30, 40) + diploma(314, 34, 28, 36);
+    s += framed(254, 78, 22, 16, R(256, 80, 18, 12, '#E9DFCB') + C(262, 86, 3, CORAL, O(0.8)) + R(266, 83, 6, 7, '#2F3B5C', O(0.7)), '#B8954E');
+    s += framed(302, 78, 22, 16, R(304, 80, 18, 12, '#DCE6E8') + PA('M304 92L311 85L316 89L322 83V92Z', '#7FAE9A'), '#B8954E');
+    // латунная подсветка над дипломами
+    s += SK('M291 30V24', '#8C6E3A', 1) + RR(276, 20, 30, 4, 2, '#C9A55A') + R(278, 23, 26, 1, '#FFF1C8', O(lampOn(c) ? 0.9 : 0.3));
+    if (lampOn(c)) c.lights.push(glow(c, 291, 44, 74, 32, '#FFD58A', 0.3 * LGT(c)) + glow(c, 291, 25, 20, 5, '#FFF1C8', 0.8) + glow(c, 372, 80, 150, 120, '#FFC870', 0.12 * LGT(c)));
+    // кушетка
+    {
+      const x = 226;
+      const gy = 176;
+      s += sh(x + 70, gy, 76, 3.5, 0.24);
+      s += PA(P`M${x + 8} ${gy - 8}L${x + 9} ${gy}H${x + 12}L${x + 13} ${gy - 8}ZM${x + 128} ${gy - 8}L${x + 129} ${gy}H${x + 132}L${x + 133} ${gy - 8}Z`, '#3E2618');
+      s += RR(x + 2, gy - 22, 138, 15, 4, '#9C6E2C');
+      s += RR(x + 8, gy - 31, 130, 12, 5, '#C8963E') + RR(x + 12, gy - 30, 120, 2.4, 1.2, '#FFFFFF', O(0.15));
+      s += PA(P`M${x} ${gy - 12}C${x - 2} ${gy - 34} ${x + 2} ${gy - 54} ${x + 12} ${gy - 58}C${x + 22} ${gy - 54} ${x + 26} ${gy - 40} ${x + 38} ${gy - 30}L${x + 36} ${gy - 12}Z`, '#B9862F');
+      s += E(x + 12, gy - 56, 10, 6, '#D6A84E') + E(x + 9, gy - 57, 3, 3.6, '#9C6E2C');
+      s += RR(x + 98, gy - 36, 34, 8, 3, '#2F3B5C') + SK(P`M${x + 100} ${gy - 28}v5M${x + 104} ${gy - 28}v5M${x + 108} ${gy - 28}v5M${x + 112} ${gy - 28}v5M${x + 116} ${gy - 28}v5M${x + 120} ${gy - 28}v5M${x + 124} ${gy - 28}v5M${x + 128} ${gy - 28}v5`, '#2F3B5C', 0.7);
+      s += G(RR(-8, -8, 16, 16, 5, '#7FAE9A') + SK('M-5 -5l10 10M5 -5l-10 10', '#6A9886', 0.8, O(0.5)), T(x + 32, gy - 38, 1) + ' ');
+    }
+    // торшер
+    s += floorLamp(c, 376, 186, 132, { shade: '#F2E3C4' });
+    // столик: салфетки, вода
+    {
+      const x = 226;
+      const gy = 200;
+      s += sh(x, gy, 20, 2.6, 0.22) + E(x, gy - 1.5, 10, 2.4, '#3E2618') + R(x - 1.8, gy - 26, 3.6, 25, '#5A3A26');
+      s += E(x, gy - 26, 22, 5, '#3E2618') + E(x, gy - 27.5, 22, 5, '#6B4530') + E(x - 6, gy - 28.5, 9, 1.6, '#FFFFFF', O(0.1));
+      s += RR(x - 16, gy - 36, 15, 8, 1.4, '#E9DFCB') + R(x - 16, gy - 33, 15, 1.6, '#C8963E') + PA(P`M${x - 12} ${gy - 36}q2 -6 4 -2q2 -5 4 1z`, '#FFFFFF');
+      s += PA(P`M${x + 3} ${gy - 41}h7l-1 12h-5z`, '#CFE3EA', O(0.75)) + PA(P`M${x + 3.6} ${gy - 36}h5.8l-.6 6.6h-4.6z`, '#9CC3E0', O(0.6)) + R(x + 4.2, gy - 40, 1, 8, '#FFFFFF', O(0.5));
+      s += mug(x + 16, gy - 28, '#F2EEE6', c.slot !== 1);
+    }
+    // два кресла друг напротив друга
+    s += armchair(150, 206, 1.25, '#A0582E', false, MUSTARD);
+    s += armchair(304, 208, 1.25, '#A0582E', true, '#7FAE9A');
+    // блокнот на подлокотнике кресла врача
+    s += G(R(-7, -2, 14, 2.6, '#2F3B5C') + R(-6, -3.4, 12, 1.6, '#F6F2E6') + LN(4, -5, 9, -1, '#B8954E', 0.8), 'transform="translate(160 160) rotate(-4)"');
+    return s;
+  };
+
+  /* ======================================================================
+     Медкомиссия: коридор медцентра
+     ====================================================================== */
+  /** Кулер с водой; (x, gy) — центр на полу. */
+  function cooler(c, x, gy) {
+    let s = sh(x, gy, 15, 2.2, 0.2);
+    s += RR(x - 11, gy - 50, 22, 50, 3, '#F2F2EE') + R(x - 11, gy - 50, 22, 4, '#DADAD4') + R(x + 7, gy - 46, 4, 44, '#E2E2DC');
+    s += R(x - 8, gy - 42, 16, 14, '#D2D6D7') + R(x - 5, gy - 41, 3, 4.4, '#3D7BC8') + R(x + 2, gy - 41, 3, 4.4, '#D9453A') + R(x - 7, gy - 30, 14, 2, '#9AA3AE');
+    s += R(x - 6, gy - 20, 12, 1.2, '#C9CCCC') + R(x - 6, gy - 12, 12, 1.2, '#C9CCCC');
+    s += R(x - 3, gy - 55, 6, 5, '#7FB8E0') + PA(P`M${x - 10} ${gy - 58}Q${x - 10} ${gy - 54} ${x - 4} ${gy - 54}H${x + 4}Q${x + 10} ${gy - 54} ${x + 10} ${gy - 58}V${gy - 80}Q${x + 10} ${gy - 84} ${x + 6} ${gy - 84}H${x - 6}Q${x - 10} ${gy - 84} ${x - 10} ${gy - 80}Z`, '#A8D2EE', O(0.88));
+    s += R(x - 10, gy - 76, 20, 1.2, '#7FB8E0', O(0.7)) + R(x - 10, gy - 66, 20, 1.2, '#7FB8E0', O(0.7)) + R(x - 7.5, gy - 80, 2.4, 22, '#FFFFFF', O(0.5));
+    // стаканчики сбоку
+    s += R(x + 11, gy - 48, 4.5, 20, '#E9E9E4') + PA(P`M${x + 11.2} ${gy - 28}h4l-.6 4h-2.8z`, '#FFFFFF');
+    return s;
+  }
+  NAMES.commission = 'Медкомиссия';
+  SC.commission = function (c) {
+    c.indoor = true;
+    const fy = 168;
+    const wallc = '#EEE7D9';
+    // ожидающие и прочие случайные детали — заранее, чтобы не менялись от времени суток
+    const lit = c.r() < 0.5;
+    const pants = () => pk(c, ['#3B4560', '#4A4F5C', '#2F3B5C']);
+    const people = [
+      { top: '#5B7C99', style: 'short', hands: 'phone', skin: SKIN[0], hair: pk(c, ['#2B2220', '#433026', '#8C6442']), pants: pants() },
+      { top: '#8E5A7C', style: 'bun', glasses: true, skin: SKIN[1], hair: '#B9B4AE', bag: '#5E412E', pants: pants() },
+      { top: '#3F4B66', style: 'bald', glasses: true, skin: pk(c, [SKIN[2], SKIN[3]]), hair: '#433026', paper: true, pants: '#3F4B66' },
+      { top: pk(c, ['#E9B949', '#7FAE9A', '#D98E5F']), style: 'long', skin: SKIN[0], hair: pk(c, ['#A4532E', '#5E412E', '#C49E68']), pants: pants() },
+    ];
+    const seats = c.r() < 0.5 ? [0, 2, 3, 5] : [0, 1, 3, 5];
+    let s = wall(c, 0, fy, wallc);
+    s += R(0, 112, 400, fy - 112, '#D8CCB4') + R(0, 109, 400, 3.6, '#5B7C99') + R(0, 112.6, 400, 1, INK, O(0.12));
+    s += floor(c, fy, '#A9A398', { n: 18, gloss: true, base: '#8E8676' });
+    s += fluoro(c, 30, 0, 64) + fluoro(c, 168, 0, 70) + fluoro(c, 300, 0, 64);
+    // окно справа
+    s += win(c, 288, 22, 94, 74, { view: 'yard', wall: wallc, v: [0.5], h: [0.32], blinds: 0.22 });
+    sunPatch(c, 288, 94, fy, 34);
+    // дверь кабинета 7 и табличка
+    s += R(22, 64, 66, 104, '#B9AE98') + R(26, 68, 58, 100, '#C99A68') + R(26, 68, 58, 100, pattern(c, 7, 30, R(0, 0, 0.7, 30, '#8A5A36', O(0.18))));
+    s += R(30, 72, 50, 40, '#000000', O(0.04)) + R(30, 118, 50, 44, '#000000', O(0.04)) + R(26, 158, 58, 10, '#B9AE98');
+    s += RR(70, 116, 9, 3, 1.5, '#D9D5CC') + R(72, 119, 2, 3, '#A8A398');
+    s += RR(46, 78, 18, 14, 1.5, '#F7F4EC') + TX(55, 89, '7', 11, '#2F3B5C', 'font-weight="bold"');
+    s += RR(38, 52, 34, 8, 2, '#3A3F4A') + RR(40, 54, 30, 4, 1.5, lit ? '#62D18E' : '#7F8A86');
+    if (lit) c.lights.push(RR(40, 54, 30, 4, 1.5, '#7BEAA4', O(0.9)) + glow(c, 55, 56, 26, 10, '#5BE08F', 0.35));
+    s += R(93, 81.5, 62, 28, INK, O(0.12)) + RR(92, 80, 62, 28, 1.5, '#FFFFFF') + R(92, 80, 3.4, 28, '#5B7C99');
+    s += TX(124.5, 91.5, 'ПСИХИАТР', 7.8, '#2F3B5C', 'font-weight="bold"') + TX(124.5, 102.5, 'каб. 7', 7, '#5B7C99');
+    // плакат «МЕДКОМИССИЯ»
+    s += R(169, 27.5, 84, 70, INK, O(0.12)) + R(168, 26, 84, 70, '#FBFAF4') + R(168, 26, 84, 14, '#3F6E9A');
+    s += TX(210, 35.8, 'МЕДКОМИССИЯ', 7.8, '#FFFFFF', 'font-weight="bold"');
+    let rows = '';
+    for (let i = 0; i < 5; i++) {
+      const y = 46 + i * 8.6;
+      s += RR(174, y, 5, 5, 1, i === 2 ? CORAL : '#CFE0E8') + (i < 2 ? SK(P`M175 ${y + 2.6}l1.4 1.4l2.4 -3`, '#3F6E9A', 0.8) : '');
+      rows += P`M183 ${y + 2.5}h${[44, 36, 40, 32, 46][i]}`;
+    }
+    s += SK(rows, '#9AA0AA', 1.6);
+    s += C(172, 30, 1.2, '#C8453A', O(0.6)) + C(248, 30, 1.2, '#C8453A', O(0.6));
+    // ряд стульев
+    const cy = 186;
+    const n = 6;
+    const x0 = 176;
+    const sw = 25.5;
+    s += sh(x0 + (n * sw) / 2, cy, (n * sw) / 2 + 8, 3, 0.18) + R(x0, cy - 15, n * sw, 2.4, '#4A505C');
+    let legs = '';
+    [x0 + 6, x0 + (n * sw) / 2, x0 + n * sw - 6].forEach((lx) => (legs += P`M${lx} ${cy - 14}V${cy}M${lx - 5} ${cy}h10`));
+    s += SK(legs, '#4A505C', 1.8);
+    const seat = (i) => x0 + i * sw + sw / 2;
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * sw;
+      s += RR(x + 1, cy - 44, sw - 2, 24, 5, '#5A6478') + RR(x + 3, cy - 42, sw - 6, 20, 4, '#6B7589') + RR(x + 0.5, cy - 21, sw - 1, 6, 3, '#4E576A');
+    }
+    people.forEach((o, i) => {
+      const x = seat(seats[i]);
+      s += person(c, x, cy, { sit: true, s: 1.12, top: o.top, pants: o.pants, style: o.style, hair: o.hair, skin: o.skin, glasses: o.glasses, hands: o.hands || 'lap', smile: false });
+      if (o.bag) s += G(RR(-8, -26, 16, 11, 2.5, o.bag) + SK('M-4 -26q4 -7 8 0', dk(o.bag, 0.2), 1.2), T(x, cy, 1.12));
+      if (o.paper) s += G(PA('M-7 -30L6 -32L7.4 -21L-5.6 -19Z', '#FBFAF6') + SK('M-4.4 -27.6l8 -1.2M-4 -25l7 -1M-3.6 -22.6l6 -1', '#9AA0AA', 0.6), T(x, cy, 1.12));
+    });
+    const empty = [0, 1, 2, 3, 4, 5].filter((i) => seats.indexOf(i) < 0);
+    s += G(PA('M-11 -18Q-11 -40 -4 -42H4Q11 -40 11 -18Z', '#7E5A44') + SK('M0 -40V-20', '#5E412E', 0.8), T(seat(empty[0]), cy, 1));
+    // стоящий у плаката с папкой
+    s += person(c, 152, 190, { s: 1.14, top: '#A9B18F', pants: '#4A4F5C', style: 'short', hair: '#433026', skin: SKIN[2], hands: 'down' });
+    s += G(R(9.6, -34, 3.4, 16, '#C8553D') + R(10, -33, 2.6, 14, '#E46A50'), T(152, 190, 1.14));
+    // направляющая линия на полу
+    s += SK('M400 204H44M51 199.6L44 204L51 208.4', '#5B7C99', 2.4, O(0.55));
+    s += PA('M0 211H400', 'none', 'stroke="#E9B949" stroke-width="2.4" opacity=".5"');
+    // кулер и урна
+    s += cooler(c, 370, 188);
+    s += sh(394, 190, 7, 1.6) + PA('M388 176H400V190H389Z', '#7A808A') + R(387, 175, 13, 2, '#8D939C');
+    // фикус в углу у двери
+    s += plant(c, 8, 190, 'ficus', 1.1, { pot: '#D9CBB0' });
     return s;
   };
 })((window.A = window.A || {}));

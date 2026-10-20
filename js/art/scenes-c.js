@@ -4,7 +4,7 @@
   'use strict';
   const K = A.art && A.art._kit;
   if (!K) return;
-  const { SC, NAMES, W, H, P, clamp, rr, pk, mix, dk, lt, INK, CORAL, MUSTARD, LAMP, LITC, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, glow, clip, pattern, LGT, skyStops, sky, winGrid, tree, leaves, snowfall, puddle, win, wall, floor, person, cat, plant, mug, archD } = K;
+  const { SC, NAMES, W, H, P, clamp, rr, pk, mix, dk, lt, INK, CORAL, MUSTARD, LAMP, LITC, LITP, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, glow, clip, pattern, LGT, skyStops, sky, winGrid, tree, leaves, snowfall, puddle, win, wall, floor, person, cat, plant, mug, archD } = K;
 
   /* ---------- Общие помощники улицы ---------- */
   const GRASS = { summer: ['#8BAE68', '#6E9355'], spring: ['#A0C470', '#7FA95B'], autumn: ['#B0A464', '#8E8752'], winter: ['#F4F7FA', '#DCE4EC'] };
@@ -297,6 +297,389 @@
     s += lampPost(c, 342, 210, 108);
     s += leaves(c, 0, FY + 3, W, H - FY - 3, 30) + leaves(c, 0, 168, W, 26, 14);
     if (c.winter) s += snowfall(c, 32);
+    return s;
+  };
+
+  /* ---------- Машина (вид сбоку). (x, y) — середина низа колёс, dir 1 — едет вправо. ---------- */
+  function car(c, x, y, col, dir) {
+    const k = c.k;
+    const d = dir || 1;
+    const on = c.slot >= 2;
+    let g = sh(0, 0.4, 25, 2.2, 0.25);
+    g += PA('M-23 -4.5Q-23.6 -10.6 -18 -11.4L-11.6 -12.2L-6 -18.4Q-4.6 -19.6 -2.4 -19.6H8.8Q11.2 -19.6 12.8 -18L17.8 -12.4L21.4 -11.6Q24.6 -10.8 24.4 -6.6L24 -4.5Z', k(col));
+    g += PA('M-10.2 -12.4L-5.4 -17.6Q-4.6 -18.4 -3.4 -18.4H2.2V-12.4ZM3.8 -18.4H8.6Q10.4 -18.4 11.4 -17.2L15.6 -12.4H3.8Z', on ? k('#3A4258') : k('#BFD3E2'));
+    g += R(-22, -9.4, 46, 1, '#FFFFFF', O(0.25)) + SK('M2.9 -12.2V-5M-10.4 -12.2Q-11.4 -8 -10.8 -5', k(dk(col, 0.3)), 0.6);
+    g += R(-3, -10.4, 3, 0.8, k(dk(col, 0.35))) + R(8, -10.4, 3, 0.8, k(dk(col, 0.35)));
+    g += C(-13, -3.6, 4.2, '#23262E') + C(14, -3.6, 4.2, '#23262E') + C(-13, -3.6, 1.8, k('#9AA1AC')) + C(14, -3.6, 1.8, k('#9AA1AC'));
+    g += E(23.4, -8.6, 1.2, 1.1, on ? '#FFF6D8' : k('#F3EEDC')) + R(-23.4, -9.6, 1.4, 2.4, on ? '#FF5A4A' : k('#C8553D'));
+    let s = G(g, T(x, y, 1, d < 0));
+    if (on) {
+      const L = LGT(c);
+      c.lights.push(PG([[x + d * 23, y - 9.6], [x + d * 62, y - 13], [x + d * 66, y + 2], [x + d * 23, y - 7.6]], lin(c, [[0, '#FFF2C8', 0.5 * L], [1, '#FFF2C8', 0]], d > 0 ? [0, 0, 1, 0] : [1, 0, 0, 0])) + glow(c, x + d * 23.4, y - 8.6, 6, 5, '#FFF6D8', 0.9) + glow(c, x - d * 23.4, y - 8.4, 6, 4, '#FF5A4A', 0.6));
+    }
+    return s;
+  }
+
+  /* ======================================================================
+     Улица города N
+     ====================================================================== */
+  NAMES.street = 'Улица города N';
+  SC.street = function (c) {
+    const k = c.k;
+    const gy = 168;
+    const nightOn = c.slot >= 2;
+    let s = sky(c, 0, 0, W, gy, { sx: [0.58, 0.14, 0.58, 0.5][c.slot], sy: [0.5, 0.06, 0.62][c.slot], mx: 0.24, my: 0.08, stars: 18 });
+    // дальние высотки в просвете и над крышей
+    const far = mix(c.k('#A9B3C3'), skyLow(c), 0.35);
+    s += R(112, 12, 44, gy - 12, far) + R(204, 46, 66, gy - 46, far) + R(160, 22, 30, gy - 22, mix(c.k('#B9B9C6'), skyLow(c), 0.4));
+    s += R(204, 42, 66, 4, mix(c.k('#8E98AA'), skyLow(c), 0.35));
+    const fp = [0.06, 0, 0.5, 0.42][c.slot];
+    s += winGrid(c, 116, 17, 8, 3, 2.6, 3.2, 5, 6, fp) + winGrid(c, 208, 52, 11, 18, 2.6, 3.2, 5, 6, fp);
+    // панельная пятиэтажка с магазином
+    const ax = -6;
+    const aw = 222;
+    const AC = c.winter ? '#D5D3CE' : '#DCD6CB';
+    s += R(ax, 32, aw, gy - 32, k(AC)) + R(ax, 29, aw, 4, k('#A9A296')) + R(ax, 33, aw, 1.4, INK, O(0.12));
+    s += R(ax + 30, 22, 26, 8, k('#C2BBAF')) + R(ax + 150, 24, 18, 6, k('#C2BBAF'));
+    s += SK('M60 22V6M54 10H66M56 14H64M188 24V12M184 15H192', k('#5E6370'), 0.6);
+    if (c.winter) s += R(ax, 27.6, aw, 2.4, '#F4F7FA') + R(ax + 30, 20.6, 26, 2, '#F4F7FA');
+    let d = '';
+    for (let y = 56; y <= 128; y += 24) d += P`M${ax} ${y}H${ax + aw}`;
+    for (let x = ax + 22; x < ax + aw; x += 22) d += P`M${x} 34V130`;
+    s += SK(d, k('#B4AC9F'), 0.6, O(0.8));
+    s += winGrid(c, 0, 36, 10, 4, 11, 12, 22, 24);
+    s += R(0, 36, 210, 96, pattern(c, 22, 24, R(5.05, 12, 0.9, 12, k('#F4F1EA')) + R(0, 16, 11, 0.9, k('#F4F1EA')) + R(-1, 23.2, 13, 0.8, k('#B4AC9F'))));
+    // балконы
+    d = '';
+    let bd = '';
+    [2, 7].forEach((i) => {
+      for (let j = 0; j < 4; j++) {
+        const bx = 22 * i - 3.5;
+        const by = 36 + 24 * j + 8;
+        d += P`M${bx} ${by}h18v8.4h-18z`;
+        bd += P`M${bx} ${by}h18v1.2h-18z`;
+      }
+    });
+    s += PA(d, k('#C9C1B3')) + PA(bd, k('#A9A193'));
+    if (c.winter) s += PA(bd, '#F4F7FA', 'transform="translate(0 -1)"');
+    // первый этаж: магазин «ПРОДУКТЫ 24»
+    s += R(ax, 130, aw, gy - 130, k('#CBC3B5')) + R(ax, 130, aw, 2, k('#A9A193'));
+    s += R(12, 133, 190, 13.4, k('#2E6A4E')) + R(12, 145.4, 190, 1.6, INK, O(0.25));
+    s += TX(90, 143, 'ПРОДУКТЫ', 9.6, nightOn ? '#FFF6DA' : k('#FFFFFF'), 'font-weight="700" letter-spacing="1.2"');
+    s += RR(152, 134.6, 26, 10.2, 2.4, k(MUSTARD)) + TX(165, 142.8, '24', 9, k('#2E3A2E'), 'font-weight="700"');
+    if (nightOn) c.lights.push(glow(c, 106, 140, 110, 16, '#D9FFE8', 0.22 * LGT(c)));
+    // витрины с полками товаров
+    const vit = (x, w) => P`M${x} 149h${w}v17h${-w}z`;
+    const vits = vit(16, 54) + vit(76, 54) + vit(174, 30);
+    s += PA(vits, nightOn ? '#FFF1CF' : k('#E8EEF0'));
+    const goods = pattern(c, 14, 6, R(0, 5.2, 14, 0.8, '#9C8C76') + R(1, 1.8, 2.6, 3.4, '#C8553D') + R(4.2, 2.6, 2.4, 2.6, '#E9B949') + R(7.2, 1.4, 2.2, 3.8, '#5B7C99') + R(10, 2.4, 3, 2.8, '#7FAE9A'));
+    s += PA(vits, goods, nightOn ? '' : O(0.55));
+    if (!nightOn) s += PA(vits, glz(c), O(0.45)) + SK('M28 149L20 166M52 149L44 166M96 149L88 166M120 149L112 166M188 149L181 166', '#FFFFFF', 2, O(0.2));
+    s += PA(vits, 'none', 'stroke="' + k('#3E464F') + '" stroke-width="1.6"') + SK('M43 149V166M103 149V166', k('#3E464F'), 1);
+    s += RR(20, 151, 19, 7.4, 1, CORAL) + TX(29.5, 156.6, 'АКЦИЯ', 4.4, '#FFFFFF', 'font-weight="700"');
+    s += RR(110, 151, 16, 7.4, 1, MUSTARD) + TX(118, 156.4, '−20%', 4.4, '#2E3A2E', 'font-weight="700"');
+    // дверь
+    s += R(136, 147, 32, 21, k('#3E464F')) + R(138, 149, 13, 19, nightOn ? '#FFF1CF' : glz(c)) + R(153, 149, 13, 19, nightOn ? '#FFF1CF' : glz(c)) + R(148, 156, 1.2, 5, k('#C9CFD6')) + R(155, 156, 1.2, 5, k('#C9CFD6'));
+    s += R(134, 166, 36, 2.4, k('#9C968C'));
+    if (nightOn) c.lights.push(glow(c, 96, 158, 120, 24, '#FFE7B0', 0.3 * LGT(c)) + glow(c, 100, 174, 100, 9, '#FFE7B0', 0.38 * LGT(c)));
+    // кирпичная девятиэтажка справа (уходит за кадр)
+    const BC = '#C58C6C';
+    s += R(262, -2, 148, gy + 2, k(BC)) + R(262, -2, 148, gy + 2, pattern(c, 8, 4, R(0, 3.4, 8, 0.6, k(dk(BC, 0.12))) + R(3.6, 0, 0.6, 3.4, k(dk(BC, 0.1))), O(0.6)));
+    s += R(262, -2, 3, gy + 2, INK, O(0.12));
+    s += winGrid(c, 276, 6, 6, 6, 12, 13, 23, 23);
+    s += R(275, 6, 140, 138, pattern(c, 23, 23, R(5.55, 6, 0.9, 13, k('#F4F1EA')) + R(0, 10.4, 12, 0.9, k('#F4F1EA')) + R(-1, 19, 14, 1.8, k('#E8DCCB')) + (c.winter ? R(-1, 18, 14, 1, '#F6F9FB') : '')));
+    s += R(262, 144, 148, gy - 144, k(dk(BC, 0.08)));
+    s += R(270, 146, 18, 22, k('#4A3A32')) + R(272, 148, 14, 20, k('#6B4F3E')) + PA('M266 143H292L294 146H264Z', k('#5A6170'));
+    if (nightOn) c.lights.push(glow(c, 279, 145, 12, 8, '#FFE7B0', 0.6));
+    // тротуар, бордюр, дорога
+    s += R(0, gy, W, 18, k(c.winter ? '#E6EBF0' : '#B9B3A9')) + R(0, gy, W, 18, pattern(c, 12, 6, R(0, 5.4, 12, 0.6, k(c.winter ? '#D2DAE3' : '#A59E93')) + R(11.4, 0, 0.6, 6, k(c.winter ? '#D2DAE3' : '#A59E93'))), O(0.7));
+    s += R(0, gy, W, 1.4, INK, O(0.15));
+    s += R(0, 186, W, 3, k(c.winter ? '#F2F5F8' : '#D4CFC5')) + R(0, 189, W, 1, INK, O(0.25));
+    s += R(0, 189, W, H - 189, lin(c, [[0, k(c.winter ? '#7E8592' : '#5A5E68')], [1, k(c.winter ? '#8F96A2' : '#686C76')]]));
+    d = '';
+    for (let x = -6; x < W; x += 26) if (x < 176 || x > 236) d += P`M${x} 206.6h14v1.4h-14z`;
+    s += PA(d, k('#ECEAE2'), O(0.85));
+    d = '';
+    for (let y = 192; y < 225; y += 6) d += P`M182 ${y}h50v3h-50z`;
+    s += PA(d, k('#ECEAE2'), O(c.winter ? 0.6 : 0.9));
+    if (c.winter) {
+      s += PA('M0 190Q20 186 40 190T80 190T120 189.6T160 190T200 189.8T240 190T280 189.6T320 190T360 189.8T400 190V193H0Z', '#F2F5F8');
+      s += SK('M0 216H180M236 216H400M0 199H180M236 199H400', '#A9B1BD', 3, O(0.35));
+    }
+    if (c.autumn || c.spring) s += puddle(c, 92, 214, 20) + puddle(c, 330, 197, 14);
+    // остановка
+    const bx = 290;
+    s += sh(bx + 38, 182, 44, 2.4, 0.2);
+    s += R(bx + 2, 136, 72, 32, k('#BFD3E0'), O(0.4)) + R(bx + 2, 136, 72, 32, 'none', 'stroke="' + k('#5A6170') + '" stroke-width=".8"');
+    s += R(bx + 2.5, 137, 20, 30, nightOn ? '#FFF4DE' : k('#F2EBDD')) + R(bx + 5, 140, 15, 11, k('#E07A5F')) + C(bx + 12.5, 145.5, 3.4, k('#F7D06A')) + R(bx + 5, 154, 15, 1.6, k('#3F4B66')) + R(bx + 5, 157.4, 10, 1.2, k('#3F4B66'));
+    if (nightOn) c.lights.push(glow(c, bx + 12.5, 152, 20, 22, '#FFF1D2', 0.5 * LGT(c)));
+    s += R(bx, 134, 2.6, 48, k('#4E5562')) + R(bx + 73.4, 134, 2.6, 48, k('#4E5562'));
+    s += R(bx - 3, 130, 82, 4.6, k('#3F4B66')) + R(bx - 3, 134.6, 82, 1.2, INK, O(0.25));
+    if (c.winter) s += RR(bx - 3.6, 128.4, 83.2, 2.6, 1.3, '#F4F7FA');
+    s += R(bx + 28, 167, 42, 2.6, k('#B5835A')) + R(bx + 31, 169.6, 1.6, 8, k('#4E5562')) + R(bx + 65, 169.6, 1.6, 8, k('#4E5562'));
+    // знак остановки
+    s += R(378, 132, 1.8, 52, k('#5A6170')) + RR(371.6, 122, 14.6, 14.6, 1.6, k('#F4F1EA')) + RR(373, 123.4, 11.8, 11.8, 1, k('#2F5DA8')) + TX(378.9, 132.6, 'А', 9, k('#FFFFFF'), 'font-weight="700"');
+    // люди
+    s += person(c, 350, 182, { s: 0.46, hands: 'phone', top: '#5B7C99', style: 'bun', coat: false });
+    s += person(c, 322, 177, { s: 0.46, sit: true, top: c.winter ? '#8E5A7C' : '#C8553D', style: 'short' });
+    s += person(c, 64, 184, { s: 0.48, top: c.winter ? '#3F4B66' : pk(c, TOPS), style: 'long', flip: true });
+    // фонарь, деревья
+    s += lampPost(c, 236, 188, 104, { kind: 'modern', dir: -1 });
+    s += tree(c, 10, 190, 132, { kind: 'birch' });
+    s += tree(c, 396, 190, 120);
+    s += car(c, 300, 203, pk(c, ['#E9B949', '#C8553D', '#5B7C99', '#E8E6E0']), -1);
+    s += leaves(c, 0, gy + 2, W, 18, 22);
+    if (c.winter) s += snowfall(c, 30);
+    return s;
+  };
+
+  /* ---------- Парк: утка, скамейка, урна ---------- */
+  function duck(c, x, y, s, o) {
+    o = o || {};
+    const k = c.k;
+    const he = o.hen;
+    let g = E(-0.5, 0.4, 9, 1.5, '#FFFFFF', O(0.3)) + E(-0.5, 0.3, 6, 0.9, k('#2B3F4C'), O(0.25));
+    g += PG([[-5, -3.4], [-9, -5], [-6.4, -1.6]], k(he ? '#7A5E44' : '#3A3A3E'));
+    g += PA('M-6.6 -2.6Q-6.4 -6 -1 -6H2.6Q5.4 -6 5.6 -2.8Q5.6 -0.2 2 0H-4.4Q-6.6 -0.2 -6.6 -2.6Z', k(he ? '#A08262' : '#B9AFA0'));
+    g += PA('M-4.6 -3.6Q-3 -5.6 1.6 -5.2Q-0.4 -2.6 -4.6 -3.6Z', k(he ? '#7A5E44' : '#8A7A66'));
+    if (!he) g += PA('M2.6 -6Q5.4 -6 5.6 -2.8L4.4 -2.4Q3.6 -5 2.4 -5.4Z', k('#7A4E3A'));
+    g += SK('M3.4 -5.4Q3.6 -8 4.6 -9', k(he ? '#8E7052' : '#2F6B4F'), 2.6) + C(5, -9.4, 2.3, k(he ? '#8E7052' : '#2F6B4F'));
+    if (!he) g += SK('M3 -6.2q1 .5 2 0', '#FFFFFF', 0.7);
+    g += PA('M6.6 -9.8L9.8 -9L6.8 -8.2Z', k(he ? '#E08A3C' : '#E9B949')) + C(5.6, -10, 0.45, '#16181E');
+    return G(g, T(x, y, s || 1, o.flip));
+  }
+  function bench(c, x, gy, w) {
+    const k = c.k;
+    const iron = k('#2F3440');
+    const wood = k('#A86F45');
+    const wl = k('#C08452');
+    let s = sh(x + w / 2, gy, w * 0.6, 2.2, 0.2);
+    s += R(x + 3, gy - 24, 1.8, 24, iron) + R(x + w - 4.8, gy - 24, 1.8, 24, iron);
+    s += R(x, gy - 23.6, w, 2.6, wl) + R(x, gy - 20, w, 2.6, wl) + R(x, gy - 16.4, w, 2.6, wl) + R(x, gy - 13.6, w, 0.8, INK, O(0.2));
+    s += R(x - 1, gy - 11.8, w + 2, 2.4, wl) + R(x - 1, gy - 9.4, w + 2, 1.8, wood);
+    s += SK(P`M${x + 2} ${gy}q-2 -5 0 -10M${x + w - 2} ${gy}q2 -5 0 -10M${x - 1} ${gy - 12}q-1.8 -4 1.4 -6.4M${x + w + 1} ${gy - 12}q1.8 -4 -1.4 -6.4`, iron, 1.4);
+    if (c.winter) s += RR(x - 1.4, gy - 25.4, w + 2.8, 2.2, 1.1, '#F6F9FB') + RR(x - 1.6, gy - 13.4, w + 3.2, 2, 1, '#F6F9FB');
+    return s;
+  }
+  function bin(c, x, gy) {
+    const k = c.k;
+    return sh(x, gy, 6, 1.2, 0.2) + PA(P`M${x - 4} ${gy - 12}H${x + 4}L${x + 3.2} ${gy}H${x - 3.2}Z`, k('#4E6B5A')) + R(x - 4.6, gy - 13.4, 9.2, 2, k('#3B5446')) + SK(P`M${x - 1.4} ${gy - 10}V${gy - 2}M${x + 1.4} ${gy - 10}V${gy - 2}`, k('#3B5446'), 0.6) + (c.winter ? RR(x - 4.8, gy - 15, 9.6, 2, 1, '#F6F9FB') : '');
+  }
+  /** Камыш у берега (зимой — сухой, со снегом). */
+  function reeds(c, x, y, w, n) {
+    const k = c.k;
+    let a = '';
+    let b = '';
+    for (let i = 0; i < n; i++) {
+      const rx = x + c.r() * w;
+      const h = rr(c, 8, 16);
+      const lean = rr(c, -2.5, 2.5);
+      a += P`M${rx} ${y}q${lean * 0.3} ${-h * 0.5} ${lean} ${-h}`;
+      if (c.r() < 0.45) b += P`M${rx + lean - 0.9} ${y - h + 1}h1.8v4.4h-1.8z`;
+    }
+    const st = c.winter || c.autumn ? '#B39A62' : c.spring ? '#7FAA58' : '#5E8F48';
+    return SK(a, k(st), 0.8) + (b ? PA(b, k('#6B4A32')) : '');
+  }
+
+  /* ======================================================================
+     Парк
+     ====================================================================== */
+  NAMES.park = 'Парк';
+  SC.park = function (c) {
+    const k = c.k;
+    const hz = 134;
+    let s = sky(c, 0, 0, W, hz + 2, { sx: 0.32, sy: [0.84, 0.2, 0.86][c.slot], mx: 0.3, my: 0.22, stars: 30 });
+    if (c.slot < 2 && !c.winter) s += birds(c, 300, 36, 3);
+    s += treeline(c, hz + 2, 28) + treeline(c, hz + 3, 18, { haze: 0.18 });
+    s += lawn(c, hz);
+    // пруд
+    const cx = 132;
+    const cy = 156;
+    const rx = 106;
+    const ry = 18;
+    const pond = (ex, ey) => P`M${cx - rx - ex} ${cy}C${cx - rx - ex} ${cy - ry - ey} ${cx - rx * 0.3} ${cy - ry - ey} ${cx} ${cy - ry - ey}C${cx + rx * 0.5} ${cy - ry - ey} ${cx + rx + ex} ${cy - ry * 0.8 - ey} ${cx + rx + ex} ${cy}C${cx + rx + ex} ${cy + ry + ey} ${cx + rx * 0.2} ${cy + ry + ey} ${cx - rx * 0.2} ${cy + ry * 0.95 + ey}C${cx - rx * 0.7} ${cy + ry * 0.9 + ey} ${cx - rx - ex} ${cy + ry * 0.8 + ey} ${cx - rx - ex} ${cy}Z`;
+    s += PA(pond(5, 3.4), k(c.winter ? '#E6ECF2' : '#B9A98A'));
+    const pc = clip(c, PA(pond(0, 0), '#000'));
+    const st = skyStops(c);
+    let w = '';
+    if (c.winter) {
+      w += R(cx - rx, cy - ry, rx * 2, ry * 2 + 2, lin(c, [[0, k('#E8EFF5')], [1, k('#BCCDDC')]]));
+      w += SK(P`M${cx - 60} ${cy - 4}l14 3l10 -4l16 5M${cx + 10} ${cy + 6}l12 -3l9 4l14 -2M${cx - 20} ${cy + 10}l8 -5l12 2`, k('#9DB2C6'), 0.6, O(0.8));
+      w += SK(P`M${cx + 30} ${cy - 2}c10 -6 26 -4 22 2s-24 6 -20 0M${cx - 50} ${cy + 6}c8 -4 20 -3 18 1`, '#FFFFFF', 0.7, O(0.8));
+      w += PA(P`M${cx - rx} ${cy - ry}H${cx + rx}V${cy - ry + 5}Q${cx + 60} ${cy - ry + 9} ${cx + 20} ${cy - ry + 5}Q${cx - 30} ${cy - ry + 10} ${cx - 70} ${cy - ry + 5}Q${cx - 90} ${cy - ry + 8} ${cx - rx} ${cy - ry + 6}Z`, '#F7FAFC', O(0.85)) + E(cx - 30, cy + 4, 26, 3.4, '#FFFFFF', O(0.4)) + E(cx + 52, cy - 2, 20, 2.6, '#FFFFFF', O(0.4));
+    } else {
+      w += R(cx - rx, cy - ry, rx * 2, ry * 2 + 2, lin(c, [[0, mix(st[st.length - 1][1], '#3E6E78', 0.25)], [1, mix(st[0][1], '#2E5662', 0.3)]]));
+      // отражения деревьев и светила
+      w += PA(P`M${cx - rx} ${cy - ry}H${cx + rx}V${cy - ry + 7}Q${cx + 70} ${cy - ry + 12} ${cx + 40} ${cy - ry + 8}Q${cx} ${cy - ry + 14} ${cx - 40} ${cy - ry + 9}Q${cx - 80} ${cy - ry + 13} ${cx - rx} ${cy - ry + 8}Z`, k(c.autumn ? '#7A5A3A' : '#2F5A42'), O(0.35));
+      const lx = 0.32 * W;
+      if (c.slot !== 1) w += PA(P`M${lx - 9} ${cy - 13}h18v1.6h-18zM${lx - 7} ${cy - 8}h14v1.4h-14zM${lx - 10} ${cy - 3}h20v1.4h-20zM${lx - 6} ${cy + 2}h12v1.2h-12zM${lx - 8} ${cy + 7}h16v1.2h-16z`, c.night ? '#FBF3D8' : '#FFD9A0', O(c.night ? 0.5 : 0.6));
+      w += SK(P`M${cx - 80} ${cy + 4}h18M${cx - 44} ${cy + 10}h24M${cx + 20} ${cy + 2}h22M${cx + 50} ${cy + 11}h16M${cx - 10} ${cy - 6}h14`, '#FFFFFF', 0.7, O(0.35));
+    }
+    s += G(w, pc);
+    s += reeds(c, cx - rx - 4, cy + 6, 22, 12) + reeds(c, cx + rx - 18, cy + 4, 24, 12);
+    if (c.summer || c.spring) s += duck(c, 92, 160, 0.9) + duck(c, 112, 165, 0.8, { hen: true }) + duck(c, 170, 158, 0.85, { flip: true });
+    else if (c.autumn) s += duck(c, 150, 162, 0.85, { flip: true });
+    // деревья за прудом
+    s += tree(c, 40, 140, 92, { kind: 'fir', shadow: false }) + tree(c, 76, 139, 72, { shadow: false, bloom: true }) + tree(c, 188, 140, 100, { kind: 'birch', shadow: false }) + tree(c, 156, 138, 50, { shadow: false });
+    s += tree(c, 318, 138, 86, { shadow: false }) + tree(c, 362, 140, 98, { kind: 'fir', shadow: false }) + tree(c, 280, 137, 52, { kind: 'birch', shadow: false });
+    // дорожка: S-образная, сужается к горизонту
+    const pts = [];
+    const B = (t, a, b, cc, d) => (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * cc + t ** 3 * d;
+    const L = [];
+    const Rr = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      const px = B(t, 268, 200, 380, 300);
+      const py = B(t, 228, 190, 150, hz + 1);
+      const hw = (1 - t) * 42 + 2.5;
+      L.push([px - hw, py]);
+      Rr.push([px + hw, py]);
+    }
+    pts.push(...L, ...Rr.reverse());
+    s += PG(pts, k(c.winter ? '#D9E1E9' : '#C9B994'));
+    s += PG(pts.map((p) => [p[0], p[1]]), 'none', 'stroke="' + k(c.winter ? '#C3CDD8' : '#A8976F') + '" stroke-width="1"');
+    // скамейка, урна, фонарь, человек
+    s += lampPost(c, 236, 184, 98);
+    s += bench(c, 312, 186, 50);
+    s += person(c, 344, 186, { s: 0.5, sit: true, hands: c.slot === 3 ? 'phone' : 'lap', top: c.winter ? '#3F4B66' : '#5B7C99', style: 'bob' });
+    s += bin(c, 374, 187);
+    // крупные деревья переднего плана
+    s += tree(c, 20, 214, 190, { bloom: true }) + tree(c, 394, 206, 150, { kind: 'birch' });
+    s += tufts(c, 40, 176, 190, 46, 14) + tufts(c, 330, 196, 70, 26, 6);
+    if (c.summer || c.spring) {
+      const by = {};
+      for (let i = 0; i < 26; i++) {
+        const fx = rr(c, 40, 230);
+        const fy = rr(c, 182, 222);
+        const col = k(pk(c, c.spring ? ['#F7F4EA', '#F2D35C', '#F7F4EA'] : ['#F7F4EA', '#F2D35C', '#E9A0B8', '#B9A3E0']));
+        by[col] = (by[col] || '') + P`M${fx - 1} ${fy}a1 1 0 1 0 2 0a1 1 0 1 0 -2 0`;
+      }
+      for (const col in by) s += PA(by[col], col);
+    }
+    s += leaves(c, 30, 180, 360, 44, 46);
+    if (c.winter) s += snowfall(c, 36);
+    return s;
+  };
+
+  /* ---------- Гирлянда лампочек: провисающие дуги между точками ---------- */
+  function garland(c, pts, sag, step) {
+    const L = LGT(c);
+    let wire = '';
+    let bulbs = '';
+    let gl = '';
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, y0] = pts[i];
+      const [x2, y2] = pts[i + 1];
+      const x1 = (x0 + x2) / 2;
+      const y1 = (y0 + y2) / 2 + sag * 2;
+      wire += P`M${x0} ${y0}Q${x1} ${y1} ${x2} ${y2}`;
+      const n = Math.max(2, Math.round((x2 - x0) / step));
+      for (let j = 1; j < n; j++) {
+        const t = j / n;
+        const bx = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * x1 + t * t * x2;
+        const by = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * y1 + t * t * y2 + 2.2;
+        bulbs += P`M${bx - 1.5} ${by}a1.5 1.8 0 1 0 3 0a1.5 1.8 0 1 0 -3 0`;
+        gl += glow(c, bx, by, 7, 7, '#FFC870', 0.5 + 0.3 * L);
+      }
+    }
+    c.lights.push(gl + PA(bulbs, '#FFF0C4'));
+    return SK(wire, '#2A2420', 0.6, O(0.8));
+  }
+
+  /* ======================================================================
+     Кафе-бар
+     ====================================================================== */
+  NAMES.cafe = 'Кафе-бар';
+  SC.cafe = function (c) {
+    c.indoor = true;
+    const fy = 178;
+    const TEAL = '#2F5652';
+    const L = LGT(c);
+    let s = R(0, 0, W, fy, lin(c, [[0, '#2A4D49'], [1, TEAL]]));
+    // кирпичная стена за стойкой
+    s += R(0, 0, 222, fy, pattern(c, 16, 8, R(0, 0, 16, 8, '#A95C42') + R(0, 0, 7.4, 3.5, '#994F38', O(0.7)) + R(8, 4, 7.4, 3.5, '#B96B4F', O(0.7)) + R(0, 3.5, 16, 0.6, '#CDA58C') + R(0, 7.5, 16, 0.6, '#CDA58C') + R(15.4, 0, 0.6, 3.5, '#CDA58C') + R(7.4, 4, 0.6, 3.5, '#CDA58C')));
+    s += R(0, 0, 222, fy, lin(c, [[0, INK, 0.25], [0.5, INK, 0], [1, INK, 0.15]]));
+    s += R(222, 0, 3, fy, INK, O(0.3));
+    // деревянные панели справа
+    s += R(225, 126, 175, fy - 126, '#5A3D2B') + R(225, 126, 175, 2.6, '#7E5539') + R(225, 128.6, 175, 1, INK, O(0.25)) + R(225, 126, 175, fy - 126, pattern(c, 22, 60, R(0, 0, 1, 60, '#3E2A1E', O(0.6)) + R(1, 0, 1, 60, '#7E5539', O(0.4))));
+    s += floor(c, fy, '#7A5236', { n: 18 });
+    // меню-доска
+    s += R(18, 12, 76, 46, '#7A5238') + R(21, 15, 70, 40, '#262C2A') + R(21, 15, 70, 40, '#FFFFFF', O(0.03));
+    s += TX(56, 25.4, 'МЕНЮ', 7.4, '#F4EFE4', 'font-weight="700" letter-spacing="1"') + SK('M36 28.6H76', '#E9E3D3', 0.4, O(0.6));
+    s += TX(56, 35, 'КОФЕ  150', 4.8, '#E9E3D3') + TX(56, 42, 'ЧАЙ    90', 4.8, '#E9E3D3') + TX(56, 49, 'ПИРОГ 180', 4.8, '#E9E3D3');
+    s += SK('M80 20q2 3 0 5M83 20q2 3 0 5M78 26h9l-1.4 4.6h-6.2zM87 27q2.4 0 1.6 2.4', '#F4EFE4', 0.5, O(0.75));
+    // неон «БАР» с бокалом
+    const neon = TX(150, 46, 'БАР', 19, 'none', 'stroke="#FF8CC6" stroke-width="1.5" font-weight="700" letter-spacing="2"') + SK('M184 24h16l-8 9zM192 33v10M187 43h10', '#7FE3E0', 1.3);
+    s += neon;
+    c.lights.push(glow(c, 162, 34, 58, 26, '#FF6FB0', 0.22 + 0.2 * L) + neon + TX(150, 46, 'БАР', 19, 'none', 'stroke="#FFE3F1" stroke-width=".5" font-weight="700" letter-spacing="2"'));
+    // полки с бутылками
+    const by = {};
+    const add = (col, d) => (by[col] = (by[col] || '') + d);
+    const BOT = ['#3E7A55', '#8C3B2E', '#C9A13B', '#5B7C99', '#E8E1CF', '#6E4A7E', '#2F4E3E', '#B5654A'];
+    let sh2 = '';
+    [68, 96].forEach((yb) => {
+      let x = 14 + c.r() * 4;
+      while (x < 198) {
+        const roll = c.r();
+        if (roll < 0.62) {
+          const h = rr(c, 13, 18);
+          const w = rr(c, 4, 5.4);
+          const col = pk(c, BOT);
+          add(col, P`M${x} ${yb}v${-h * 0.62}q0 -2 ${w * 0.3} -2.6v${-h * 0.3}h${w * 0.4}v${h * 0.3}q${w * 0.3} .6 ${w * 0.3} 2.6v${h * 0.62}z`);
+          sh2 += P`M${x + 0.8} ${yb - 1.5}v${-h * 0.5}h.9v${h * 0.5}z`;
+          if (c.r() < 0.5) add('#F1E6D2', P`M${x + 0.4} ${yb - h * 0.45}h${w - 0.8}v${h * 0.2}h${0.8 - w}z`);
+          x += w + rr(c, 0.8, 2.2);
+        } else if (roll < 0.85) {
+          add('#D9E6EA', P`M${x} ${yb - 8}h5l-1 8h-3z`);
+          x += 6.5;
+        } else {
+          add('#C8C2B4', P`M${x} ${yb}v-6h6v6z`);
+          add(pk(c, ['#E07A5F', '#E9B949', '#9CC3B2']), P`M${x + 0.6} ${yb - 0.6}v-3.4h4.8v3.4z`);
+          x += 8;
+        }
+      }
+    });
+    for (const col in by) s += PA(by[col], col);
+    s += PA(sh2, '#FFFFFF', O(0.3));
+    s += R(10, 68, 196, 3.2, '#6B4630') + R(10, 96, 196, 3.2, '#6B4630') + R(10, 71.2, 196, 1.4, INK, O(0.3)) + R(10, 99.2, 196, 1.4, INK, O(0.3));
+    // бармен
+    s += person(c, 92, 136, { bust: true, s: 0.66, top: '#2F3B5C', hands: 'table', style: 'short', hair: '#433026' });
+    s += R(84.4, 113.2, 15.2, 6, '#F1E6D2', O(0.9));
+    // стойка
+    s += sh(100, 193, 106, 4.4, 0.25);
+    s += R(0, 124, 200, 66, '#6E4A33') + R(0, 124, 200, 66, pattern(c, 14, 70, R(0, 0, 1, 70, '#4E3324', O(0.7)) + R(1, 0, 1, 70, '#8A5E40', O(0.5))));
+    s += R(0, 186, 200, 4, '#3A281C') + SK('M0 178H198', '#D2A956', 1.6) + SK('M40 178v8M120 178v8M190 178v8', '#D2A956', 1);
+    s += R(-2, 115, 206, 9, '#C99A68') + R(-2, 115, 206, 1.4, '#E2B884') + R(-2, 124, 206, 2, '#7A4E30');
+    // кофемашина, краны, витрина с пирогом
+    s += sh(36, 117, 18, 1.6, 0.25) + R(22, 95, 30, 22, '#C9CFD6') + R(22, 95, 30, 4, '#9AA3AE') + R(25, 101, 24, 3, '#2A2F3C') + R(30, 104, 2, 5, '#3A3F4A') + R(42, 104, 2, 5, '#3A3F4A');
+    s += RR(28, 110, 5, 5, 1, '#FBFAF4') + RR(40, 110, 5, 5, 1, '#FBFAF4') + C(26, 98, 1, '#E07A5F') + C(48, 98, 1, '#7FAE9A');
+    s += R(118, 100, 26, 3, '#B8BEC6') + R(122, 103, 2, 8, '#B8BEC6') + R(130, 103, 2, 8, '#B8BEC6') + R(138, 103, 2, 8, '#B8BEC6') + RR(121, 92, 4, 9, 1.4, '#2A2F3C') + RR(129, 92, 4, 9, 1.4, '#C8553D') + RR(137, 92, 4, 9, 1.4, '#E9B949');
+    s += PA('M120 115V105h7v10zM130 115V105h7v10z', '#E9B949', O(0.85)) + R(120, 104, 7, 2.2, '#FBF6E6') + R(130, 104, 7, 2.2, '#FBF6E6');
+    s += E(172, 115, 14, 1.6, '#D9DEE3') + PA('M161 114Q161 98 172 98Q183 98 183 114Z', '#DDEBF0', O(0.45)) + PA('M164 114V107L176 104L180 107V114Z', '#F1E6D2') + PA('M164 107L176 104L180 107L168 110Z', '#C8553D') + R(164, 110, 16, 1.4, '#8A5A36', O(0.6)) + PA('M164 101Q166 99 168 101', 'none', 'stroke="#FFFFFF" stroke-width=".8" opacity=".7"');
+    s += R(190, 106, 7, 9, '#DDEBF0', O(0.6)) + R(190.6, 111, 5.8, 3.4, '#9CC3B2', O(0.8));
+    c.lights.push(glow(c, 100, 112, 150, 60, '#FFC870', 0.18 + 0.14 * L));
+    // высокие табуреты
+    const stool = (x) =>
+      sh(x, 199, 11, 1.8, 0.22) + SK(P`M${x - 7} 199L${x - 3} 152M${x + 7} 199L${x + 3} 152M${x} 199V152`, '#2F333C', 1.4) + E(x, 180, 6.4, 1.6, 'none', 'stroke="#2F333C" stroke-width="1.1"') + RR(x - 10, 148, 20, 4.4, 2, '#3A2C26') + E(x, 148, 10, 2.4, '#8A3B2E') + E(x - 3, 147.6, 4, 0.8, '#FFFFFF', O(0.2));
+    s += stool(34) + stool(96) + stool(158);
+    // окно на улицу и диванчик
+    s += win(c, 246, 24, 112, 84, { view: 'street', wall: TEAL, frame: '#2A2F2E', ft: 2.4, v: [0.5], h: [0.64], sillCol: '#7A5238' });
+    sunPatch(c, 246, 112, fy, 36);
+    s += sh(303, 186, 66, 3.4, 0.22) + RR(240, 116, 126, 46, 6, '#3F4F70') + RR(244, 120, 118, 36, 5, '#4B5E84') + SK('M262 122v32M282 122v32M302 122v32M322 122v32M342 122v32', '#3F4F70', 0.8, O(0.7));
+    s += RR(238, 154, 130, 12, 4, '#3F4F70') + R(242, 166, 122, 18, '#2E3A54');
+    // друзья за столиком
+    s += person(c, 282, 182, { sit: true, s: 0.7, hands: 'table', top: '#C8553D', style: 'long', hair: '#8C6442', smile: true });
+    s += person(c, 326, 182, { sit: true, s: 0.7, hands: 'table', top: '#7FAE9A', style: 'short', glasses: true, smile: true });
+    s += sh(304, 200, 34, 2.6, 0.25) + R(302, 162, 4, 36, '#2F333C') + E(304, 198, 14, 2.4, '#2F333C') + RR(264, 158, 80, 5, 2, '#8A5A36') + R(264, 158, 80, 1.4, '#B07C52');
+    s += mug(274, 158, '#F1E6D2', c.slot !== 1) + PA('M318 158V145h8v13z', '#E9B949', O(0.9)) + R(318, 143, 8, 3, '#FBF6E6') + R(319, 147, 1.2, 9, '#FFFFFF', O(0.4));
+    s += E(298, 157.4, 8, 1.6, '#F4F1EA') + PA('M294 156.6L302 154.4L303 156.6Z', '#C8553D') + R(334, 155, 5, 3, '#2A2F3C');
+    c.lights.push(glow(c, 304, 152, 70, 34, '#FFC870', 0.12 + 0.16 * L));
+    // часы, картина, растение
+    s += K.clockFace(379, 40, 9, K.SLOT_HM[c.slot][0], K.SLOT_HM[c.slot][1]);
+    s += K.framed(366, 62, 26, 34, R(368.6, 64.6, 20.8, 28.8, '#E9DCC4') + C(379, 74, 6, '#E07A5F') + PA('M368.6 93.4L376 82L382 88L389.4 80V93.4Z', '#7FAE9A'), '#2A2420');
+    s += plant(c, 384, 204, 'monstera', 1.15, { pot: '#C9A04A' });
+    // гирлянда под потолком
+    s += garland(c, [[-4, 3], [132, 7], [268, 4], [404, 6]], 7, 12);
     return s;
   };
 })((window.A = window.A || {}));
