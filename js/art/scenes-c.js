@@ -4,7 +4,7 @@
   'use strict';
   const K = A.art && A.art._kit;
   if (!K) return;
-  const { SC, NAMES, W, H, P, clamp, rr, pk, mix, dk, lt, INK, CORAL, MUSTARD, LAMP, LITC, LITP, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, glow, clip, pattern, LGT, skyStops, sky, winGrid, tree, leaves, snowfall, puddle, win, wall, floor, person, cat, plant, mug, archD } = K;
+  const { SC, NAMES, W, H, P, clamp, rr, pk, mix, dk, lt, INK, CORAL, MUSTARD, LAMP, LITC, LITP, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, glow, clip, pattern, LGT, skyStops, sky, winGrid, tree, leaves, snowfall, puddle, win, sunPatch, wall, floor, fluoro, person, cat, plant, mug, archD } = K;
 
   /* ---------- Общие помощники улицы ---------- */
   const GRASS = { summer: ['#8BAE68', '#6E9355'], spring: ['#A0C470', '#7FA95B'], autumn: ['#B0A464', '#8E8752'], winter: ['#F4F7FA', '#DCE4EC'] };
@@ -680,6 +680,62 @@
     s += plant(c, 384, 204, 'monstera', 1.15, { pot: '#C9A04A' });
     // гирлянда под потолком
     s += garland(c, [[-4, 3], [132, 7], [268, 4], [404, 6]], 7, 12);
+    return s;
+  };
+
+  /* ---------- Магазин у дома ---------- */
+  NAMES.shop = 'Магазин «Продукты 24»';
+  SC.shop = function (c) {
+    c.indoor = true;
+    const fy = 172;
+    let s = wall(c, 0, fy, '#EDEFE6');
+    s += R(0, 0, W, 22, '#2F6B4F') + TX(130, 15, 'ПРОДУКТЫ 24', 10, '#F6F2E6', 'font-weight="700" letter-spacing="2"');
+    s += floor(c, fy, '#C9C2B2', { n: 12, cross: 0.22, gloss: true });
+    // окно-витрина справа
+    s += win(c, 300, 30, 88, 52);
+    // стеллажи
+    const PROD = ['#C8553D', '#E9B949', '#5B7C99', '#7FAE9A', '#8E5A7C', '#F1E6D2', '#D98E5F', '#3F4B66', '#E07A5F', '#A9B18F'];
+    for (let u = 0; u < 3; u++) {
+      const x0 = 10 + u * 82;
+      s += R(x0, 34, 76, fy - 34, '#9AA3A6') + R(x0 + 3, 37, 70, fy - 40, '#D9DEDA');
+      for (let k = 0; k < 4; k++) {
+        const sy = 66 + k * 27;
+        s += R(x0 + 2, sy, 72, 3, '#7D878B');
+        let x = x0 + 5;
+        while (x < x0 + 68) {
+          const w = rr(c, 5, 10);
+          const h = rr(c, 9, 20);
+          const col = pk(c, PROD);
+          s += RR(x, sy - h, w, h, 1.2, col) + R(x + 1, sy - h + 2, w - 2, 2, '#FFFFFF', O(0.35));
+          x += w + rr(c, 1, 2.5);
+        }
+        if (c.r() < 0.4) s += R(x0 + 10 + c.r() * 40, sy + 3, 14, 6, '#FFD84A');
+      }
+      s += RR(x0 + 18, 40, 40, 11, 2, CORAL) + TX(x0 + 38, 48.5, 'АКЦИЯ', 7, '#FFFFFF', 'font-weight="700"');
+    }
+    s += fluoro(c, 40, 24, 70) + fluoro(c, 160, 24, 70) + fluoro(c, 290, 24, 70);
+    // касса
+    s += R(262, 128, 132, 44, '#8A5A36') + R(262, 124, 132, 6, '#B98556') + R(270, 118, 70, 6, '#3A3F44');
+    s += RR(346, 104, 26, 18, 2, '#2A2C33') + R(349, 107, 20, 12, '#9CD3E6') + R(357, 122, 4, 4, '#2A2C33');
+    s += RR(300, 124, 22, 5, 1, '#E9B949');
+    s += person(c, 318, 124, { bust: true, s: 0.62, top: '#C8553D', hands: 'table', style: 'bun', hair: '#5E412E' });
+    // ящики с фруктами на переднем плане
+    const FR = [['#D9442E', '#F06A4F'], ['#F2A13A', '#FFC266'], ['#9BBF4A', '#C1DD6E'], ['#E9C94A', '#FFE27A']];
+    for (let b = 0; b < 4; b++) {
+      const bx = 14 + b * 46;
+      const [fc, fl] = FR[b];
+      s += R(bx, 196, 42, 26, '#A9744F') + R(bx, 196, 42, 4, '#C99364') + R(bx + 2, 206, 38, 2, '#8A5A36', O(0.6)) + R(bx + 2, 214, 38, 2, '#8A5A36', O(0.6));
+      for (let k = 0; k < 7; k++) {
+        const fx = bx + 6 + (k % 4) * 10 + (k > 3 ? 5 : 0);
+        const fy2 = k > 3 ? 188 : 194;
+        s += C(fx, fy2, 5, fc) + C(fx - 1.5, fy2 - 1.5, 1.6, fl);
+      }
+      s += R(bx + 12, 200, 18, 8, '#FFFFFF') + TX(bx + 21, 206.5, (59 + b * 40) + '₽', 5.5, INK, 'font-weight="700"');
+    }
+    // покупатель с корзиной
+    s += person(c, 236, 214, { s: 0.78, top: c.season === 'winter' ? '#3F4B66' : '#7FAE9A', style: 'short', flip: true });
+    s += RR(204, 176, 20, 13, 2, '#C8553D') + SK(P`M206 176Q214 166 222 176`, '#8A2E22', 1.4) + R(207, 173, 5, 4, '#E9B949') + R(214, 172, 5, 5, '#7FAE9A');
+    if (c.slot >= 2) c.lights.push(glow(c, 359, 113, 40, 22, '#BFE6F5', 0.3));
     return s;
   };
 })((window.A = window.A || {}));
