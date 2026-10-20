@@ -35,22 +35,22 @@ wait_ready() {
   return 1
 }
 
-# Пробросить DevTools текущего процесса приложения на 127.0.0.1:9222
+# Дождаться, когда у процесса приложения появится сокет отладки WebView (к нему подключается Playwright)
 devtools() {
   local p=""
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 40); do
     p=$(pid)
-    [ -n "$p" ] && break
-    sleep 1
-  done
-  [ -n "$p" ] || return 1
-  adb forward --remove-all > /dev/null 2>&1
-  adb forward tcp:9222 "localabstract:webview_devtools_remote_$p" > /dev/null || return 1
-  for _ in $(seq 1 30); do
-    curl -sf http://127.0.0.1:9222/json/version > "$RES/devtools.json" && return 0
+    if [ -n "$p" ] && adb shell cat /proc/net/unix 2>/dev/null | grep -q "webview_devtools_remote_$p"; then
+      return 0
+    fi
     sleep 1
   done
   return 1
+}
+
+# Флаги пакета из dumpsys: у отладочной сборки есть DEBUGGABLE, у релизной — нет
+pkg_flags() {
+  adb shell dumpsys package "$PKG" 2>/dev/null | grep -E "flags=\[" | tr -d '\r'
 }
 
 fresh_start() {
@@ -69,7 +69,9 @@ step "1. Отладочная сборка: установка и запуск"
 adb uninstall "$PKG" > /dev/null 2>&1 || true
 adb install -r "$APKS/anamnez-debug.apk" || err "не установилась отладочная сборка"
 fresh_start
-devtools || err "не удалось подключиться к WebView через DevTools"
+devtools || err "у WebView нет сокета отладки"
+pkg_flags | tee "$RES/flags-debug.txt"
+grep -q DEBUGGABLE "$RES/flags-debug.txt" || echo "::warning::[$LABEL] не вижу флага DEBUGGABLE у отладочной сборки — проверка релиза ниже может быть неточной"
 check info | tee "$RES/info.json" || err "страница не ответила"
 grep -q '"localStorage":true' "$RES/info.json" || err "localStorage недоступен"
 grep -q '"displayFont":true' "$RES/info.json" || err "шрифт Oranienbaum не загрузился"
@@ -77,7 +79,7 @@ grep -q '"textFont":true' "$RES/info.json" || err "шрифт Golos Text не з
 shot 01-title
 
 step "2. Автоигрок проходит первые дни прямо в приложении"
-node tools/autoplay.cjs - 320 --cdp http://127.0.0.1:9222 --smart --days 8 --shots "$RES/play" 2>&1 | tee "$RES/autoplay.txt"
+node tools/autoplay.cjs - 320 --android "$PKG" --smart --days 8 --shots "$RES/play" 2>&1 | tee "$RES/autoplay.txt"
 [ "${PIPESTATUS[0]}" -eq 0 ] || err "автоигрок нашёл ошибки"
 shot 02-after-play
 
@@ -155,7 +157,8 @@ adb logcat -d > "$RES/logcat-release.txt" 2>/dev/null
 grep -q "ready=true" "$RES/logcat-release.txt" || err "игра в релизной сборке не запустилась"
 grep -E "AnamnezWeb.*(Uncaught|TypeError|ReferenceError|SyntaxError)" "$RES/logcat-release.txt" && err "ошибки JavaScript в журнале (релиз)"
 grep -E "FATAL EXCEPTION" -A 12 "$RES/logcat-release.txt" && err "релизная сборка падала"
-adb shell run-as "$PKG" true 2>&1 | grep -qi "not debuggable" || err "релизная сборка отлаживаемая"
+pkg_flags | tee "$RES/flags-release.txt"
+grep -q DEBUGGABLE "$RES/flags-release.txt" && err "релизная сборка отлаживаемая"
 adb shell dumpsys package "$PKG" | grep -E "versionCode|versionName|targetSdk" | head -3 | tee "$RES/package.txt"
 
 echo

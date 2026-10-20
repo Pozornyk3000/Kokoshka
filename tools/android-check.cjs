@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* Маленький помощник для проверки на эмуляторе: подключается к WebView отладочной сборки
-   через DevTools (adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>) и выполняет команду.
+/* Маленький помощник для проверки на эмуляторе: подключается через adb к WebView отладочной
+   сборки (режим Playwright для Android) и выполняет команду.
    node tools/android-check.cjs info              — сведения о странице (JSON)
    node tools/android-check.cjs eval "<выражение>" — значение выражения
    node tools/android-check.cjs click "<селектор>" — нажать на элемент */
@@ -11,17 +11,14 @@ try {
   pw = require('playwright-core');
 }
 const [cmd, arg] = process.argv.slice(2);
-const endpoint = process.env.CDP || 'http://127.0.0.1:9222';
+const PKG = process.env.PKG || 'io.github.pozornyk3000.anamnez';
 
 (async () => {
-  const browser = await pw.chromium.connectOverCDP(endpoint, { timeout: 30000 });
-  let page = null;
-  for (let i = 0; i < 30 && !page; i++) {
-    const pages = browser.contexts().flatMap((c) => c.pages());
-    page = pages.find((p) => /appassets\.androidplatform\.net/.test(p.url())) || null;
-    if (!page) await new Promise((r) => setTimeout(r, 500));
-  }
-  if (!page) throw new Error('Страница игры не найдена');
+  const devices = await pw._android.devices({ omitDriverInstall: true });
+  if (!devices.length) throw new Error('adb не видит ни одного устройства');
+  const device = devices[0];
+  const webview = await device.webView({ pkg: PKG }, { timeout: 45000 });
+  const page = await webview.page();
   await page.waitForFunction(() => window.A && window.A.ui && document.querySelector('[data-act]'), null, { timeout: 30000 });
   let out;
   if (cmd === 'info') {
@@ -60,6 +57,7 @@ const endpoint = process.env.CDP || 'http://127.0.0.1:9222';
     throw new Error('Неизвестная команда: ' + cmd);
   }
   console.log(typeof out === 'string' ? out : JSON.stringify(out));
+  await device.close().catch(() => {});
   process.exit(0);
 })().catch((e) => {
   console.error('android-check:', e.message);

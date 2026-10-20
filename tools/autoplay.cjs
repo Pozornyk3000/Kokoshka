@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /* Автоигрок: проходит игру через интерфейс в headless Chromium и ловит ошибки.
    NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart]
-   Внутри приложения Android (WebView с отладкой, проброшенной через adb forward):
-   node tools/autoplay.cjs - 300 --cdp http://127.0.0.1:9222 --smart */
+   Внутри приложения Android (отладочная сборка на устройстве или эмуляторе, подключённом через adb):
+   node tools/autoplay.cjs - 300 --android io.github.pozornyk3000.anamnez --smart
+   К уже запущенному Chromium по DevTools: --cdp http://127.0.0.1:9222 */
 const path = require('path');
 const fs = require('fs');
 let pw;
@@ -22,16 +23,26 @@ const seed = +flag('--seed', 1);
 const maxDays = +flag('--days', 999);
 if (shots) fs.mkdirSync(shots, { recursive: true });
 
-const cdp = flag('--cdp', null);
+const androidPkg = flag('--android', null);
+const cdp = flag('--cdp', null) || androidPkg;
 
 (async () => {
   let browser;
   let page;
-  if (cdp) {
+  let device = null;
+  if (androidPkg) {
+    // WebView приложения: подключение через adb (у Playwright для этого отдельный режим)
+    const devices = await pw._android.devices({ omitDriverInstall: true });
+    if (!devices.length) throw new Error('adb не видит ни одного устройства');
+    device = devices[0];
+    const webview = await device.webView({ pkg: androidPkg }, { timeout: 60000 });
+    page = await webview.page();
+    console.log('Подключено к', device.model(), page.url());
+  } else if (cdp) {
     browser = await chromium.connectOverCDP(cdp);
     const pages = browser.contexts().flatMap((c) => c.pages());
-    page = pages.find((p) => /appassets|index\.html/.test(p.url())) || pages[0];
-    if (!page) throw new Error('В WebView нет страницы');
+    page = pages.find((p) => /index\.html/.test(p.url())) || pages[0];
+    if (!page) throw new Error('Нет страницы');
     console.log('Подключено к', page.url());
   } else {
     browser = await chromium.launch();
@@ -306,7 +317,8 @@ const cdp = flag('--cdp', null);
     console.log('ОШИБКИ (' + errors.length + '):');
     [...new Set(errors)].slice(0, 30).forEach((e) => console.log(' - ' + e));
   } else console.log('Ошибок нет.');
-  if (!cdp) await browser.close();
+  if (device) await device.close().catch(() => {});
+  else if (!cdp) await browser.close();
   process.exit(errors.length ? 1 : 0);
 })().catch((e) => {
   console.error(e);
