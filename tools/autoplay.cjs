@@ -128,6 +128,73 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
       if (!(await click(`[data-act="do"][data-arg="${choice.id}"]`))) errors.push('cannot click action ' + choice.id + ' in ' + choice.place);
       continue;
     }
+    // Активности: «умный» режим — знает верные ответы и выбирает их с вероятностью 85%
+    if (argv.includes('--smart')) {
+      const sm = await page.evaluate(() => {
+        const A = window.A;
+        const ok = () => Math.random() < 0.85;
+        const cl = (sel) => {
+          const b = document.querySelector(sel);
+          if (b && b.getAttribute('aria-disabled') !== 'true') {
+            b.click();
+            return true;
+          }
+          return false;
+        };
+        const s = A.state;
+        const step = s.activity && s.activity.steps[s.activity.i];
+        if (!step) return null;
+        const x = A.ui.act.cur && A.ui.act.cur();
+        if (x && x.p && x.p.stage) {
+          const c = x.c;
+          const p = x.p;
+          if (p.stage === 'status' && !p._done) {
+            c.status.opts.forEach((o, i) => {
+              if (o.ok && ok() && p.sel.status.indexOf(i) < 0) p.sel.status.push(i);
+            });
+            p._done = true;
+            return cl('[data-act="cs-submit"]') ? 'smart-status' : null;
+          }
+          if (p.stage === 'dx') {
+            p.sel.syn = ok() ? c.syndrome.opts.findIndex((o) => o.ok) : 0;
+            p.sel.dx = ok() ? c.dx.opts.findIndex((o) => o.ok) : 0;
+            A.ui.render();
+            return cl('[data-act="cs-submit"]') ? 'smart-dx' : null;
+          }
+          if (p.stage === 'tx' && !p.sel.tx.length) {
+            c.tx.opts.forEach((o, i) => {
+              if (o.ok && ok()) p.sel.tx.push(i);
+            });
+            if (!p.sel.tx.length) p.sel.tx.push(c.tx.opts.findIndex((o) => o.ok));
+            A.ui.render();
+            return cl('[data-act="cs-submit"]') ? 'smart-tx' : null;
+          }
+          if (p.stage === 'talk') {
+            const left = p.maxQ - p.asked.length;
+            if (left > 0) {
+              const order = c.q.map((q, i) => ({ i, v: (q.crit ? 10 : 0) + q.v })).filter((o) => p.asked.indexOf(o.i) < 0).sort((a, b) => b.v - a.v);
+              if (order.length) return cl('[data-act="cs-ask"][data-arg="' + order[0].i + '"]') ? 'smart-ask' : null;
+            }
+          }
+        }
+        if (step.type === 'lecture' && step.p && step.p.stage === 'quiz' && step.p.ans[step.p.q] == null) {
+          const L = A.data.lectureById[step.id];
+          const k = ok() ? L.quiz[step.p.q].ok : 0;
+          return cl('[data-act="lec-pick"][data-arg="' + k + '"]') ? 'smart-quiz' : null;
+        }
+        if (step.type === 'exam' && step.p && step.p.stage === 'test') {
+          const q = A.exams.testQuestion(step.p.test[step.p.tq]);
+          return cl('[data-act="ex-test"][data-arg="' + (ok() ? q.ok : 0) + '"]') ? 'smart-test' : null;
+        }
+        if (step.type === 'mini' && step.p && step.p.pick == null) {
+          const m = A.minis.get(step, step.p.i);
+          const k = ok() ? m.options.findIndex((o) => o.ok) : 0;
+          return cl('[data-act="mini-pick"][data-arg="' + k + '"]') ? 'smart-mini' : null;
+        }
+        return null;
+      });
+      if (sm) continue;
+    }
     // Активности: кликаем по смыслу
     const acted = await page.evaluate(() => {
       const q = (sel) => Array.from(document.querySelectorAll(sel)).filter((b) => b.getAttribute('aria-disabled') !== 'true');

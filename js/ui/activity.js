@@ -589,7 +589,7 @@
         (wrong.length ? '<ul class="marks">' + wrong.map((x) => '<li class="m-bad">' + U.esc(x.q.q) + '<span class="m-def">Верно: ' + U.esc(x.q.opts[x.q.ok]) + '. ' + U.esc(x.q.why) + '</span></li>').join('') + '</ul>' : '<p>Без ошибок.</p>');
     }
     return (
-      '<section class="result-card exam-result"><span class="eyebrow">' + U.esc(def.title) + '</span><div class="stamp' + (grade < 3 ? ' bad' : '') + '"><b>' + U.esc(gname) + '</b><span>' + res.pct + '%</span></div>' +
+      '<section class="result-card exam-result"><span class="eyebrow">' + U.esc(def.title) + '</span><div class="stamp' + (grade < 3 ? ' bad' : '') + (gname.length > 9 ? ' long' : '') + '"><b>' + U.esc(gname) + '</b><span>' + res.pct + '%</span></div>' +
       '<div class="zachetka-line"><span>' + U.esc(def.short) + '</span><span class="hand grade">' + A.exams.gradeShort(grade) + '</span><span class="hand sign">' + (grade >= 3 ? U.esc(def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : 'Комиссия') : '') + '</span></div>' +
       '<p>' + U.esc(comment) + '</p>' +
       (prev && res.grade > 4 ? '<p class="dim small">Пересдача: выше «хорошо» не ставят.</p>' : '') +
@@ -759,7 +759,7 @@
           const r = j.req(s);
           return (
             '<div class="job' + (r ? ' locked' : '') + '"><span class="eyebrow">' + U.esc(j.name) + '</span><b>' + U.esc(j.role) + '</b><p>' + U.esc(j.desc) + '</p>' +
-            '<div class="act-chips">' + UI.chip('оклад ' + U.money(j.salary) + '/нед.', '') + (j.perCase ? UI.chip('+' + U.money(j.perCase) + ' за пациента', 'pos') : '') + (j.nightDuty ? UI.chip('дежурства', '') : '') + UI.chip('стресс ' + (j.stress >= 9 ? 'высокий' : j.stress >= 7 ? 'средний' : 'умеренный'), j.stress >= 9 ? 'neg' : '') + '</div>' +
+            '<div class="act-chips">' + UI.chip('оклад ' + U.money(j.salary) + '/нед.', '') + (j.perCase ? UI.chip('+' + U.money(j.perCase) + ' за пациента', 'pos') : '') + (j.nightDuty ? UI.chip('дежурства', '') : '') + UI.chip('стресс ' + (j.stress >= 12 ? 'высокий' : j.stress >= 10 ? 'средний' : 'умеренный'), j.stress >= 12 ? 'neg' : '') + '</div>' +
             (r ? '<p class="chip off">' + U.esc(r) + '</p>' : btn('Выбрать', 'job-pick', k, 'primary')) +
             '</div>'
           );

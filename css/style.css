@@ -1396,6 +1396,14 @@ details.note summary {
   color: var(--alarm);
   border-color: var(--alarm);
 }
+.stamp {
+  max-width: calc(100% - 24px);
+}
+.stamp.long b {
+  font-size: clamp(15px, 5vw, 22px);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
 @keyframes stamp {
   from {
     transform: rotate(-5deg) scale(1.7);

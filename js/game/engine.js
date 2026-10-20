@@ -547,8 +547,16 @@
         early: !!res.early,
       };
     } else {
-      if (dur > 0) G.advance(s, dur, { sleep: res.sleep || a.sleep, early: res.early });
-      G.finishText(s, res.text, snap);
+      const sl = res.sleep || a.sleep;
+      // Текст «перед сном» остаётся во вчерашнем дне, утром первым идёт утренний текст
+      if (sl === 'full' || sl === 'short') {
+        G.say(s, res.text);
+        if (dur > 0) G.advance(s, dur, { sleep: sl, early: res.early });
+        G.finishText(s, '', snap);
+      } else {
+        if (dur > 0) G.advance(s, dur, { sleep: sl, early: res.early });
+        G.finishText(s, res.text, snap);
+      }
     }
     G.after(s);
     G.save();
@@ -572,6 +580,10 @@
     let text = '';
     const def = A.actions.byId[act.action];
     if (def && def.finish) text = def.finish(s, act.results, act.arg, act) || '';
+    if (act.sleep === 'full' || act.sleep === 'short') {
+      G.say(s, text);
+      text = '';
+    }
     if (act.dur > 0) G.advance(s, act.dur, { sleep: act.sleep, early: act.early });
     G.finishText(s, text, act.snap);
     G.after(s);
