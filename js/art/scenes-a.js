@@ -6,7 +6,7 @@
   'use strict';
   const K = A.art && A.art._kit;
   if (!K) return;
-  const { SC, NAMES, W, H, P, rr, pk, dk, lt, INK, MINT, CORAL, MUSTARD, COAT, COATD, SKIN, HAIRC, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, glow, clip, pattern, lampOn, LGT, sky, tree, win, sunPatch, curtain, rod, radiator, wall, floor, fluoro, books, flushBooks, bookcase, plant, mug, kettle, clockFace, SLOT_HM, framed, diploma, person } = K;
+  const { SC, NAMES, W, H, P, rr, pk, dk, lt, INK, MINT, CORAL, MUSTARD, COAT, COATD, SKIN, HAIRC, TOPS, R, RR, E, C, PA, PG, SK, TX, G, O, T, LN, sh, lin, rad, glow, clip, pattern, lampOn, LGT, sky, tree, win, sunPatch, curtain, rod, radiator, wall, floor, fluoro, books, flushBooks, bookcase, plant, mug, kettle, clockFace, SLOT_HM, framed, diploma, person } = K;
 
   /* ---------- Общие помощники этого файла ---------- */
   const YOUNG = HAIRC.slice(0, 5).concat(['#A4532E']);
@@ -374,7 +374,7 @@
       C(px + 24.6, py + 23.4, 0.7, '#2A2530') +
       R(px + 4, py + 4, pw - 8, ph - 8, rad(c, [[0.5, '#000000', 0], [1, '#000000', 0.35]]));
     s += framed(px, py, pw, ph, inner, '#B8954E') + R(px + 3, py + 3, pw - 6, ph - 6, 'none', 'stroke="#8E6E34" stroke-width="1"');
-    s += plate(200, py + ph + 6, 26, 5, '', 3, '#C9A85E', '#000');
+    s += RR(188, py + ph + 4, 24, 4.6, 1, '#C9A85E') + R(192, py + ph + 6, 16, 0.8, '#8E6E34');
     // светильники
     s += globeLamp(c, 118, 22, 7) + globeLamp(c, 282, 22, 7);
     // экзаменаторы
@@ -394,7 +394,7 @@
     s += G(fan, 'transform="translate(200 146) scale(1 .5)"');
     // зачётки, бумаги, ручка
     s += PG([[98, 141], [118, 141], [119, 146], [96, 146]], '#2F3B5C') + PG([[99, 139], [117, 139], [118, 143.5], [97, 143.5]], '#3F4B66') + PG([[100, 137], [116, 137], [117, 141], [99, 141]], '#2F3B5C');
-    s += PG([[176, 141], [184, 141], [182, 146], [172, 146]], '#F7F3EA', O(0)) + PG([[222, 140], [246, 140], [248, 146], [220, 146]], '#F7F3EA') + SK('M226 142.4H242M226 144H238', '#9AA0AA', 0.5) + SK('M250 141L262 139', '#2A2F3C', 0.9);
+    s += PG([[222, 140], [246, 140], [248, 146], [220, 146]], '#F7F3EA') + SK('M226 142.4H242M226 144H238', '#9AA0AA', 0.5) + SK('M250 141L262 139', '#2A2F3C', 0.9);
     // графин и стакан
     const gx = 306;
     s += E(gx, 146, 10, 2, INK, O(0.15));
