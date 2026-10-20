@@ -179,6 +179,7 @@
       const frac = U.clamp((good - wrong - danger) / ok, 0, 1);
       res.parts.tx = Math.round(frac * W.tx);
       res.danger = danger;
+      res.txSel = p.sel.tx.slice();
       if (danger) res.notes.push('Опасное назначение: такое решение могло навредить пациенту.');
     }
 
@@ -241,7 +242,7 @@
     G.learn(s, L.domain, 1.6 * right);
     s.study.rating += right * 2;
     s.study.ratingMax += total * 2;
-    G.apply(s, { energy: makeup ? 0 : -10, stress: 2, xp: 5 + right * 3 });
+    G.apply(s, { energy: makeup ? 0 : -10, stress: 3, xp: 5 + right * 3 });
     G.checkNoSkips(s);
     if (makeup) return '';
     const mood =
@@ -254,7 +255,7 @@
     const sc = res ? res.score : 0;
     s.study.rating += Math.round(sc / 10);
     s.study.ratingMax += 10;
-    G.apply(s, { energy: makeup ? 0 : -14, stress: 4, rep: sc >= 80 ? 1 : 0 });
+    G.apply(s, { energy: makeup ? 0 : -14, stress: 6, rep: sc >= 80 ? 1 : 0 });
     G.checkNoSkips(s);
     if (makeup) return '';
     let comment;

@@ -164,7 +164,7 @@
     free: true,
     dur: 0,
     rest: true,
-    chips: (s) => [{ t: (s.items.catfood ? '−9' : '−6') + ' стресса', c: 'pos' }, { t: 'без времени', c: '' }],
+    chips: (s) => [{ t: (s.items.catfood ? '−9' : '−6') + ' стресса', c: 'pos' }],
     req: (s) => (s.daily.pets >= 2 ? 'Кокошка ушла спать на шкаф' : null),
     run: (s) => {
       s.daily.pets++;
@@ -181,7 +181,7 @@
     free: true,
     dur: 0,
     rest: true,
-    chips: (s) => [{ t: '+' + (s.items.coffee ? 15 : 10) + ' энергии', c: 'pos' }, { t: 'без времени', c: '' }],
+    chips: (s) => [{ t: '+' + (s.items.coffee ? 15 : 10) + ' энергии', c: 'pos' }],
     req: (s) => (s.daily.coffee >= 2 ? 'Третья чашка — уже тахикардия' : s.slot === 3 ? 'Ночью кофе — плохая идея' : null),
     run: (s) => {
       s.daily.coffee++;
@@ -226,7 +226,6 @@
     free: true,
     dur: 0,
     rest: true,
-    chips: [{ t: 'без времени', c: '' }],
     pick: (s) =>
       Object.keys(D.food).map((k) => ({
         value: k,
@@ -447,10 +446,10 @@
       const avg = G.knowAvg(s);
       const risk = 0.22 - avg / 600 + (s.energy < 25 ? 0.12 : 0) + (s.burnout.active ? 0.1 : 0);
       if (U.chance(risk)) {
-        G.apply(s, { rep: -3, stress: 6 });
+        G.apply(s, { rep: -2, stress: 6 });
         return { text: 'День прошёл на автомате — и в конце ты понимаешь, что не {заметил|заметила} у одной пациентки нарастающую тревогу и не {выяснил|выяснила}, принимает ли она таблетки. Заведующий указал на ошибку при всех. Неприятно и справедливо.' };
       }
-      G.apply(s, { rep: 0.3 });
+      G.apply(s, { rep: 0.5 });
       return {
         text: U.pick([
           'Двенадцать пациентов, двадцать три записи в медицинской системе, ноль сюрпризов. Обычный день.',
@@ -458,6 +457,29 @@
           'День как конвейер: «Как сон? Как настроение? Таблетки принимаете?» К вечеру язык заплетается.',
         ]),
       };
+    },
+  });
+  def({
+    id: 'autoweek',
+    place: 'work',
+    title: 'Прожить неделю на автопилоте',
+    sub: 'Быстрая перемотка до следующего понедельника: работа, сон и выбранный режим подработок',
+    slots: [0],
+    phases: ['career'],
+    free: true,
+    dur: 0,
+    keepsObligation: true,
+    chips: [{ t: '7 дней', c: '' }, { t: 'быстро', c: '' }],
+    hide: (s) => C.wd(s.day) !== 0,
+    req: (s) => (s.career.today === s.day ? 'Сегодня уже {работал|работала}' : s.stress >= 75 ? 'Слишком высокий стресс — сначала отдохни' : s.health < 40 ? 'Сначала подлечись' : null),
+    pick: () => [
+      { value: 'calm', label: 'Спокойно', sub: 'Работа, прогулки, сон по режиму. Стресс под контролем' },
+      { value: 'gigs', label: 'С подработками', sub: 'Плюс две медкомиссии и одно ночное дежурство' },
+      { value: 'max', label: 'Максимум денег', sub: 'Три дежурства и подработки каждый вечер. Риск выгорания' },
+    ],
+    run: (s, mode) => {
+      G.autoWeek(s, mode || 'calm');
+      return {};
     },
   });
   def({
@@ -516,6 +538,29 @@
     req: (s) => (s.energy < 25 ? 'Слишком {устал|устала} для дежурства' : null),
     run: (s) => G.nightPlan(s, 'doctor'),
     finish: (s, res) => G.finishNight(s, res, 'doctor'),
+  });
+  def({
+    id: 'swap_night',
+    place: 'work',
+    title: 'Дежурство за Марата',
+    sub: 'Обещано сегодня · 6 500 ₽',
+    slots: [3],
+    phases: ['career'],
+    sleep: 'none',
+    keepsObligation: true,
+    chips: [{ t: '+6 500 ₽', c: 'pos' }, { t: 'без сна', c: 'neg' }],
+    hide: (s) => s.flags.swapNight !== s.day,
+    primary: () => true,
+    run: (s) => G.nightPlan(s, 'doctor'),
+    finish: (s, res) => {
+      s.flags.swapNight = null;
+      const r = res[1];
+      s.stats.nights++;
+      G.apply(s, { energy: -30, stress: 10, xp: 10 });
+      if (r) G.apply(s, { rep: (r.right - (r.total - r.right)) * 0.6, xp: r.right * 8 });
+      G.apply(s, { money: 6500 }, 'Дежурство за Марата');
+      return 'Дежурство за Марата сдано. Утром он присылает фото дочки в костюме снежинки и перевод. Заработано ' + U.money(6500) + '.';
+    },
   });
   def({
     id: 'article',
@@ -671,10 +716,10 @@
     run: (s) => ({ steps: [{ type: 'story', story: 'commission' }, { type: 'mini', mode: 'commission', items: A.minis.commission(s, 3) }] }),
     finish: (s, res) => {
       const r = res[1] || { right: 0, total: 3 };
-      G.apply(s, { energy: -16, stress: 3, xp: 5 * r.right });
+      G.apply(s, { energy: -16, stress: 5, xp: 5 * r.right });
       let pay = 3500 + (r.right === r.total ? 600 : 0);
       G.apply(s, { money: pay }, 'Медкомиссия');
-      if (r.right < r.total) G.apply(s, { rep: -1.5 * (r.total - r.right) });
+      G.apply(s, { rep: r.right === r.total ? 0.5 : -0.8 * (r.total - r.right) });
       return 'Смена на медкомиссии закрыта: ' + r.right + ' из ' + r.total + ' решений без ошибок. Заработано ' + U.money(pay) + '.';
     },
   });
@@ -691,7 +736,7 @@
     run: (s) => ({ steps: [{ type: 'story', story: 'online' }, { type: 'mini', mode: 'online', ids: G.pickMinis(s, ['online'], 2) }] }),
     finish: (s, res) => {
       const r = res[1] || { right: 0, total: 2 };
-      G.apply(s, { energy: -14, stress: 4, rep: r.right * 0.8, xp: 8 * r.right });
+      G.apply(s, { energy: -14, stress: 5, rep: r.right * 0.4, xp: 8 * r.right });
       const pay = 2400 * r.right;
       if (pay) G.apply(s, { money: pay }, 'Онлайн-консультации');
       return 'Вечер онлайн-приёма: ' + r.right + ' из ' + r.total + ' консультаций прошли как надо. ' + (pay ? 'Заработано ' + U.money(pay) + '.' : 'Пациенты попросили вернуть деньги — сервис вернул.');
@@ -709,7 +754,7 @@
     chips: [{ t: '+4 000 ₽', c: 'pos' }, { t: '+репутация', c: 'pos' }],
     req: (s) => (s.rep < 25 ? 'Нужна репутация 25+' : null),
     run: (s) => {
-      G.apply(s, { energy: -15, stress: 4, rep: 2, xp: 10 });
+      G.apply(s, { energy: -15, stress: 5, rep: 1, xp: 10 });
       G.apply(s, { money: 4000 }, 'Занятие со студентами');
       G.learn(s, U.pick(D.domainKeys), 2);
       return {
@@ -745,7 +790,6 @@
     sub: 'Книги, техника, полезные вещи',
     free: true,
     dur: 0,
-    chips: [{ t: 'без времени', c: '' }],
     run: () => ({ steps: [{ type: 'shop' }], dur: 0 }),
     finish: () => '',
   });
@@ -910,7 +954,6 @@
     sub: (s) => 'Сейчас: ' + D.housing[s.housing].name + ' · ' + U.money(D.housing[s.housing].rent) + '/нед.',
     free: true,
     dur: 0,
-    chips: [{ t: 'без времени', c: '' }],
     pick: (s) =>
       Object.keys(D.housing)
         .filter((k) => k !== s.housing && !(D.housing[k].studentOnly && s.phase === 'career'))
@@ -985,7 +1028,7 @@
     const out = [];
     const r = res[1];
     if (r && r.kind === 'case') {
-      const repGain = ((r.score - 55) / 12) * job.rep;
+      const repGain = ((r.score - 60) / 22) * job.rep;
       G.apply(s, { rep: repGain });
       if (job.perCase && r.score >= 60) {
         const pay = Math.round(job.perCase * G.rank(s).mult);
@@ -999,7 +1042,7 @@
       }
       out.unshift('Рабочий день окончен. Самый сложный пациент дня разобран на ' + r.score + ' из 100.');
     } else if (r && r.kind === 'mini') {
-      G.apply(s, { rep: (r.right - (r.total - r.right) * 1.5) * 0.9 * job.rep });
+      G.apply(s, { rep: (r.right - (r.total - r.right) * 1.5) * 0.4 * job.rep });
       out.unshift('Рабочий день окончен. Приём: ' + U.int(9, 14) + ' пациентов, из них ' + r.total + ' — с вопросами посложнее (верно: ' + r.right + ').');
     } else {
       out.unshift('Рабочий день окончен.');
@@ -1021,14 +1064,63 @@
     s.stats.nights++;
     const r = res[1];
     let pay = kind === 'nurse' ? 3000 + (G.bg(s).nightBonus || 0) : G.nightPay(s);
-    G.apply(s, { energy: -30, stress: kind === 'nurse' ? 8 : 10, xp: kind === 'nurse' ? 4 : 10 });
+    G.apply(s, { energy: -30, stress: kind === 'nurse' ? 10 : 13, xp: kind === 'nurse' ? 4 : 10 });
     let text = kind === 'nurse' ? 'Смена сдана в 8:00. ' : 'Дежурство сдано в 8:00. ';
     if (r) {
-      G.apply(s, { rep: (r.right - (r.total - r.right)) * (kind === 'nurse' ? 0.6 : 1.2), xp: r.right * 8 });
+      G.apply(s, { rep: (r.right - (r.total - r.right)) * (kind === 'nurse' ? 0.3 : 0.6), xp: r.right * 8 });
       text += 'Ночью ' + (r.total > 1 ? 'были сложные ситуации' : 'была одна сложная ситуация') + ': решено верно ' + r.right + ' из ' + r.total + '. ';
     } else text += 'Ночь выдалась спокойной — редкая удача. ';
     G.apply(s, { money: pay }, kind === 'nurse' ? 'Ночная смена в ПБ №6' : 'Дежурство');
     return text + 'Заработано ' + U.money(pay) + '.';
+  };
+
+  /** Неделя на автопилоте: рутинная работа без разборов, режим подработок по выбору. */
+  G.autoWeek = function (s, mode) {
+    const plans = {
+      calm: { nights: [], gigs: [] },
+      gigs: { nights: [3], gigs: [1, 3] },
+      max: { nights: [0, 2, 4], gigs: [1, 3, 5, 6] },
+    };
+    const plan = plans[mode] || plans.calm;
+    const t = { work: 0, errors: 0, nights: 0, gigs: 0, gigErr: 0 };
+    const money0 = s.money;
+    const skill = () => U.clamp(0.5 + G.knowAvg(s) / 200 - (s.energy < 30 ? 0.12 : 0) - (s.burnout.active ? 0.1 : 0), 0.3, 0.95);
+    let stopped = '';
+    for (let d = 0; d < 7; d++) {
+      if (s.ended) break;
+      const wd = C.wd(s.day);
+      if (G.isWorkday(s) && !G.isSick(s) && s.career.today !== s.day && s.career.off !== s.day) {
+        const r = A.actions.byId.work_auto.run(s);
+        t.work++;
+        if (/ошибк/.test(r.text || '')) t.errors++;
+      } else if (!G.isSick(s)) G.apply(s, { stress: -7, energy: 6 });
+      s.slot = 2;
+      if (!G.isSick(s) && plan.gigs.indexOf(wd) >= 0 && s.energy > 30) {
+        let right = 0;
+        for (let i = 0; i < 3; i++) if (U.chance(skill())) right++;
+        G.apply(s, { energy: -16, stress: 5, xp: 5 * right, rep: right === 3 ? 0.5 : -0.8 * (3 - right) });
+        G.apply(s, { money: 3500 + (right === 3 ? 600 : 0) }, 'Медкомиссия');
+        t.gigs++;
+        t.gigErr += 3 - right;
+      } else if (!G.isSick(s)) G.apply(s, { stress: -8 });
+      s.slot = 3;
+      if (!G.isSick(s) && plan.nights.indexOf(wd) >= 0 && s.energy > 35 && s.stress < 80) {
+        let right = 0;
+        for (let i = 0; i < 2; i++) if (U.chance(skill())) right++;
+        G.finishNight(s, [null, { right, total: 2 }], 'doctor');
+        t.nights++;
+        G.newDay(s, 'none', { vacation: true });
+      } else G.newDay(s, 'full', { vacation: true });
+      if (s.stress >= 85 || s.health < 25) {
+        stopped = 'Автопилот остановлен: ' + (s.health < 25 ? 'здоровье на исходе' : 'стресс зашкаливает') + '. Пора отдохнуть по-настоящему.';
+        break;
+      }
+    }
+    const parts = ['Неделя прошла на автопилоте: рабочих дней — ' + t.work + (t.gigs ? ', медкомиссий — ' + t.gigs : '') + (t.nights ? ', дежурств — ' + t.nights : '') + '.'];
+    if (t.errors || t.gigErr) parts.push('Без разборов не обошлось без промахов: ' + (t.errors + t.gigErr) + ' ' + U.plural(t.errors + t.gigErr, ['ошибка', 'ошибки', 'ошибок']) + ' на приёме и комиссиях.');
+    parts.push('Разница на счету за неделю (с учётом аренды и зарплаты): ' + U.signedMoney(Math.round(s.money - money0)) + '.');
+    if (stopped) parts.push(stopped);
+    G.say(s, parts.join(' '));
   };
 
   /** Неделя отпуска: быстрые сутки отдыха. */

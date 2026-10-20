@@ -85,10 +85,13 @@
     const ks = D.domainKeys;
     return ks.reduce((a, k) => a + (s.know[k] || 0), 0) / ks.length;
   };
+  /** Опыт, набранный уже врачом: категории растут только от практики. */
+  G.careerXp = (s) => (s.career ? Math.max(0, s.xp - (s.career.xp0 || 0)) : 0);
   G.rankIndex = function (s) {
+    const xp = G.careerXp(s);
     let r = 0;
     D.ranks.forEach((x, i) => {
-      if (s.xp >= x.xp) r = i;
+      if (xp >= x.xp) r = i;
     });
     return r;
   };
@@ -275,6 +278,8 @@
       s.flags.noSleep = true;
     }
 
+    // Фоновый стресс жизни: счета, дорога, сессия, долги
+    G.apply(s, { stress: (s.phase === 'session' ? 5 : 3) + (s.money < 0 ? 4 : 0) });
     s.acc.health += food.health;
     if (s.stress >= 80) s.acc.health -= 2;
     else if (s.stress >= 65) s.acc.health -= 1;
@@ -325,7 +330,7 @@
     s.flags.wokeTired = !!s.flags.noSleep;
     s.flags.noSleep = false;
     if (s.items.coffee) G.apply(s, { energy: 8 });
-    if (s.career) s.career.todayCase = null;
+    if (G.isSick(s) && G.isWorkday(s)) s.career.weekSick = (s.career.weekSick || 0) + 1;
 
     const steps = [];
     // Неделя закончилась
@@ -336,7 +341,12 @@
     if (sickStory) steps.push({ type: 'story', story: 'sick' });
     if (burnoutStory) steps.push({ type: 'story', story: burnoutStory });
     G.phaseTick(s, steps);
-    const ev = A.events ? A.events.morning(s) : null;
+    if (s.flags.swapNight && s.flags.swapNight < s.day) {
+      s.flags.swapNight = null;
+      G.apply(s, { rep: -3 });
+      parts.push('Марат так и не дождался подмены: дежурство за него никто не вышел. Он пишет короткое «понятно».');
+    }
+    const ev = A.events && !opt.vacation ? A.events.morning(s) : null;
     if (ev) steps.push({ type: 'event', id: ev });
 
     G.say(s, G.morningText(s, parts), 'morning');
@@ -456,7 +466,12 @@
       if (!s.flags.bailout) {
         s.flags.bailout = true;
         sum.bailout = true;
-      } else sum.broke = true;
+        G.apply(s, { money: 45000, stress: 8 }, 'Родители закрыли долг');
+        sum.after = s.money;
+      } else {
+        sum.broke = true;
+        s.flags.broke = true;
+      }
     }
     return sum;
   };
@@ -494,6 +509,7 @@
       missed: 0,
       reviews: [],
       lastVacation: s.day,
+      xp0: s.xp,
     };
     const avg = G.gradeAvg(s);
     G.apply(s, { rep: avg >= 4.75 ? 15 : avg >= 4 ? 8 : avg >= 3 ? 3 : 0 });
@@ -641,6 +657,7 @@
     if (s.stats.askSuicide >= 3) G.unlock(s, 'ask_suicide');
     if (s.stats.ethics >= 3) G.unlock(s, 'ethics');
     if (s.ended) return;
+    if (s.phase === 'graduate' && !s.career && !s.activity) G.queue(s, [{ type: 'jobs' }], 'graduation');
     const dream = D.dreams[s.player.dream];
     if (dream && !s.flags.dreamDone && s.phase === 'career' && dream.check(s)) {
       s.flags.dreamDone = true;
