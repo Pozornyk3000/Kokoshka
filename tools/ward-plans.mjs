@@ -51,6 +51,7 @@ export const PLANS = {
   },
   w_mania_irritable: {
     ideal: { days: { 0: [['order', 'hcg'], ...MET, ['rx', 'olanzapine', 'po', 15]] } },
+    acuphase: { days: { 0: [['order', 'hcg'], ...MET, ['rx', 'zuclopenthixol', 'im', 100], ['rx', 'olanzapine', 'im', 10]], 3: [['rx', 'quetiapine', 'po', 100]], 4: [['dose', 'quetiapine', 200]], 5: [['dose', 'quetiapine', 300]], 6: [['dose', 'quetiapine', 400]] } },
     bad: { days: { 0: [['rx', 'valproate', 'po', 1000]] }, monitor: false },
   },
   w_bipolar_dep: {

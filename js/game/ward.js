@@ -188,6 +188,28 @@
     const g = P().group(pt);
     const day = s.day - pt.admitDay;
     (pt.rx || []).forEach((r) => (r.usedToday = false));
+    // курсовые инъекции (Акуфаз) — не дольше положенного
+    pt.rx = pt.rx.filter((r) => {
+      if (r.kind === 'int') return true;
+      const d = P().drug(r.id);
+      const f = d ? P().form(d, r.route) : null;
+      if (f && f.route === r.route && f.course && s.day - r.since >= f.course) {
+        note(s, pt, 'staff', 'Курс инъекций завершён: ' + d.name.toLowerCase() + ' (' + (f.label || P().ROUTES[r.route]) + ') отменён. Дальше — таблетки или пролонгированная форма.', 'warn');
+        log(s, pt, 'Отменено: ' + d.name.toLowerCase() + ' — курс инъекций завершён.');
+        return false;
+      }
+      return true;
+    });
+    // «по требованию»: при беспокойстве медсестра вводит назначенный препарат
+    pt.rx.forEach((r) => {
+      if (!r.prn) return;
+      const restless = pt.sev > 65 || (pt.sx.akathisia || 0) > 1.5 || pt.refusing;
+      if (restless && Math.random() < 0.45) {
+        r.usedToday = true;
+        pt.prnUsed = (pt.prnUsed || 0) + 1;
+        note(s, pt, 'staff', 'По требованию введено: ' + P().drug(r.id).name.toLowerCase() + ' ' + P().fmtDose(r.dose) + ' (' + P().ROUTES[r.route] + ').', '');
+      }
+    });
     if (pt.away) {
       if (s.day >= pt.away.until) {
         note(s, pt, 'staff', W.fill(pt, '{P} возвращается из ' + pt.away.where + '. Состояние стабилизировано, назначения требуют пересмотра.'), 'warn');
@@ -218,13 +240,14 @@
     const E = efficacy(s, pt);
     pt.lastE = E;
     let dS;
-    if (g.special) dS = withdrawalDelta(pt, day, E);
+    if (g.special) dS = withdrawalDelta(pt, pt.group === 'delirium_tremens' && pt.dtStart ? s.day - pt.dtStart : day, E);
     else dS = -g.K * W.speed(pt) * E.total * pt.sev + (E.total < 0.15 ? g.drift : g.drift * 0.3);
     // бензодиазепины при ПРЛ и деменции растормаживают
     if (pt.group === 'bpd_crisis' && pt.rx.some((r) => cls(r) === 'bzd')) dS += 1.2;
     dS += (Math.random() * 2 - 1) * 1.3;
     dS += seStress(pt);
     if (pt.flags.dehydrated && !pt.rx.some((r) => r.id === 'infusion')) dS += 1;
+    if (pt.rx.some((r) => r.prn && r.usedToday)) dS -= 1.2; // введённое по требованию успокаивает на время
     pt.sev = U.clamp(pt.sev + dS, 0, 100);
     sideEffects(s, pt);
     updLabs(s, pt);
@@ -495,7 +518,7 @@
     pt.tests.forEach((rec) => {
       if (rec.value || rec.ready > s.day) return;
       fillTest(s, pt, rec);
-      note(s, pt, 'lab', 'Готов результат: ' + P().TESTS[rec.test].name.toLowerCase() + ' — ' + rec.text + '.', rec.flag ? 'warn' : '');
+      note(s, pt, 'lab', 'Готов результат: ' + P().lc(P().TESTS[rec.test].name) + ' — ' + rec.text + '.', rec.flag ? 'warn' : '');
       // находки, которые требуют решения
       if (rec.test === 'cbc' && rec.value.anc < 1.5 && pt.rx.some((r) => r.id === 'clozapine' || r.id === 'carbamazepine') && !pt.pending) startEvent(s, pt, 'neutropenia');
     });
@@ -514,7 +537,7 @@
         const key = x.test + ':' + x.why;
         if (!pt.monMissed[key]) {
           pt.monMissed[key] = s.day;
-          note(s, pt, 'staff', 'Не проведён обязательный контроль: ' + P().TESTS[x.test].name.toLowerCase() + ' (' + x.why + ').', 'warn');
+          note(s, pt, 'staff', 'Не проведён обязательный контроль: ' + P().lc(P().TESTS[x.test].name) + ' (' + x.why + ').', 'warn');
         }
       });
   }
@@ -1296,6 +1319,7 @@
       preventable: () => true,
       start: (s, pt) => {
         pt.group = 'delirium_tremens';
+        pt.dtStart = s.day;
         pt.dx = 'F10.4 Синдром отмены алкоголя с делирием (развился в отделении).';
         pt.sev = Math.max(pt.sev, 85);
         pt.admitDay = Math.min(pt.admitDay, s.day - 1);
@@ -1493,6 +1517,7 @@
   /** Ждали ли игрока на обходе в этот день. */
   W.wasExpected = function (s, day) {
     if (A.cal && A.cal.isWeekend(day)) return false;
+    if (G().isSick(s)) return false;
     if (s.phase === 'study') return !!G().scheduleFor(day);
     if (s.phase === 'career') return true;
     return false;
@@ -1824,17 +1849,16 @@
 
   W.practiceTick = function (s, steps) {
     const w = s.ward;
-    if (!w || w.practice.closed) return;
-    if (!w.practice.start) return;
+    if (!w || w.practice.closed || s.phase === 'career' || s.phase === 'graduate') return;
+    // практика закрывается всегда — даже если ординатор ни разу не пришёл (тогда «не зачтено» и отработка в сессию)
     if (s.day > W.PRACTICE_TO) W.closePractice(s, steps);
   };
 
+  /** Учебные дни практики — знаменатель посещаемости. */
   W.practiceDays = function (s) {
-    const w = s.ward;
-    if (!w || !w.practice.start) return 0;
     let n = 0;
     const last = Math.min(s.day, W.PRACTICE_TO);
-    for (let d = w.practice.start; d <= last; d++) if (G().scheduleFor(d)) n++;
+    for (let d = W.PRACTICE_FROM; d <= last; d++) if (G().scheduleFor(d)) n++;
     return n;
   };
 

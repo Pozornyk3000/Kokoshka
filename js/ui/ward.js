@@ -145,7 +145,7 @@
     if (rx.kind === 'int') return '';
     if (rx.prn) return P.fmtDose(rx.dose) + ' по требованию';
     if (rx.route === 'depot') return P.fmtDose(rx.dose) + ' раз в ' + (f.interval || 28) + ' дн.';
-    if (rx.route === 'im') return P.fmtDose(rx.dose) + (f.interval ? ' раз в ' + f.interval + (f.interval === 1 ? ' день' : ' дн.') : '');
+    if (rx.route === 'im') return P.fmtDose(rx.dose) + (f.interval === 1 ? ' ежедневно' : f.interval ? ' раз в ' + f.interval + ' дн.' : '');
     if (rx.route === 'patch') return P.fmtDose(rx.dose) + ' за 24 ч';
     const split = f.split || 1;
     const per = rx.dose / split;
@@ -213,7 +213,7 @@
     if (fresh > 0) chips.push(UI.chip('новых записей: ' + fresh, ''));
     const due = P.dueTests(s, pt);
     if (due.some((x) => x.overdue)) chips.push(UI.chip('просрочен контроль', 'neg'));
-    else if (due.length) chips.push(UI.chip('пора: ' + due.map((x) => P.TESTS[x.test].name.toLowerCase()).join(', '), 'warn'));
+    else if (due.length) chips.push(UI.chip('пора: ' + due.map((x) => P.lc(P.TESTS[x.test].name)).join(', '), 'warn'));
     const day = s.day - pt.admitDay + 1;
     return (
       '<button type="button" class="wcard' + (pt.pending ? ' alarm' : '') + '" data-act="wd-open" data-arg="' + pt.uid + '">' +
@@ -589,7 +589,7 @@
     const { s, p, pt } = cur();
     if (!pt) return;
     const r = W.order(s, pt, test);
-    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.TESTS[test].name.toLowerCase()) + '. Результат будет завтра.');
+    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.lc(P.TESTS[test].name)) + '. Результат будет завтра.');
     save();
   });
   UI.on('wd-add', (kind) => {

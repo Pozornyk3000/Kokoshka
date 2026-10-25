@@ -465,6 +465,12 @@
     return String(x).replace('.', ',') + ' мг';
   }
   P.fmtDose = fmtDose;
+  /** Строчная первая буква, но аббревиатуры (ЭКГ, ТТГ) не трогаем. */
+  P.lc = (t) => {
+    t = String(t || '');
+    if (t.length > 1 && t[1] !== t[1].toLowerCase()) return t;
+    return t.charAt(0).toLowerCase() + t.slice(1);
+  };
 
   function polypharmacy(pt, drug, rx) {
     const out = [];
@@ -584,7 +590,7 @@
       out.push({ test, why, overdue: !!overdue });
     };
     (pt.rx || []).forEach((rx) => {
-      if (rx.kind === 'int') return;
+      if (rx.kind === 'int' || rx.prn) return; // «по требованию» — без планового мониторинга
       const d = P.drug(rx.id);
       if (!d) return;
       const on = s.day - rx.since;

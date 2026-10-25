@@ -18183,6 +18183,12 @@ details.note summary {
     return String(x).replace('.', ',') + ' мг';
   }
   P.fmtDose = fmtDose;
+  /** Строчная первая буква, но аббревиатуры (ЭКГ, ТТГ) не трогаем. */
+  P.lc = (t) => {
+    t = String(t || '');
+    if (t.length > 1 && t[1] !== t[1].toLowerCase()) return t;
+    return t.charAt(0).toLowerCase() + t.slice(1);
+  };
 
   function polypharmacy(pt, drug, rx) {
     const out = [];
@@ -18302,7 +18308,7 @@ details.note summary {
       out.push({ test, why, overdue: !!overdue });
     };
     (pt.rx || []).forEach((rx) => {
-      if (rx.kind === 'int') return;
+      if (rx.kind === 'int' || rx.prn) return; // «по требованию» — без планового мониторинга
       const d = P.drug(rx.id);
       if (!d) return;
       const on = s.day - rx.since;
@@ -18602,6 +18608,28 @@ details.note summary {
     const g = P().group(pt);
     const day = s.day - pt.admitDay;
     (pt.rx || []).forEach((r) => (r.usedToday = false));
+    // курсовые инъекции (Акуфаз) — не дольше положенного
+    pt.rx = pt.rx.filter((r) => {
+      if (r.kind === 'int') return true;
+      const d = P().drug(r.id);
+      const f = d ? P().form(d, r.route) : null;
+      if (f && f.route === r.route && f.course && s.day - r.since >= f.course) {
+        note(s, pt, 'staff', 'Курс инъекций завершён: ' + d.name.toLowerCase() + ' (' + (f.label || P().ROUTES[r.route]) + ') отменён. Дальше — таблетки или пролонгированная форма.', 'warn');
+        log(s, pt, 'Отменено: ' + d.name.toLowerCase() + ' — курс инъекций завершён.');
+        return false;
+      }
+      return true;
+    });
+    // «по требованию»: при беспокойстве медсестра вводит назначенный препарат
+    pt.rx.forEach((r) => {
+      if (!r.prn) return;
+      const restless = pt.sev > 65 || (pt.sx.akathisia || 0) > 1.5 || pt.refusing;
+      if (restless && Math.random() < 0.45) {
+        r.usedToday = true;
+        pt.prnUsed = (pt.prnUsed || 0) + 1;
+        note(s, pt, 'staff', 'По требованию введено: ' + P().drug(r.id).name.toLowerCase() + ' ' + P().fmtDose(r.dose) + ' (' + P().ROUTES[r.route] + ').', '');
+      }
+    });
     if (pt.away) {
       if (s.day >= pt.away.until) {
         note(s, pt, 'staff', W.fill(pt, '{P} возвращается из ' + pt.away.where + '. Состояние стабилизировано, назначения требуют пересмотра.'), 'warn');
@@ -18632,13 +18660,14 @@ details.note summary {
     const E = efficacy(s, pt);
     pt.lastE = E;
     let dS;
-    if (g.special) dS = withdrawalDelta(pt, day, E);
+    if (g.special) dS = withdrawalDelta(pt, pt.group === 'delirium_tremens' && pt.dtStart ? s.day - pt.dtStart : day, E);
     else dS = -g.K * W.speed(pt) * E.total * pt.sev + (E.total < 0.15 ? g.drift : g.drift * 0.3);
     // бензодиазепины при ПРЛ и деменции растормаживают
     if (pt.group === 'bpd_crisis' && pt.rx.some((r) => cls(r) === 'bzd')) dS += 1.2;
     dS += (Math.random() * 2 - 1) * 1.3;
     dS += seStress(pt);
     if (pt.flags.dehydrated && !pt.rx.some((r) => r.id === 'infusion')) dS += 1;
+    if (pt.rx.some((r) => r.prn && r.usedToday)) dS -= 1.2; // введённое по требованию успокаивает на время
     pt.sev = U.clamp(pt.sev + dS, 0, 100);
     sideEffects(s, pt);
     updLabs(s, pt);
@@ -18909,7 +18938,7 @@ details.note summary {
     pt.tests.forEach((rec) => {
       if (rec.value || rec.ready > s.day) return;
       fillTest(s, pt, rec);
-      note(s, pt, 'lab', 'Готов результат: ' + P().TESTS[rec.test].name.toLowerCase() + ' — ' + rec.text + '.', rec.flag ? 'warn' : '');
+      note(s, pt, 'lab', 'Готов результат: ' + P().lc(P().TESTS[rec.test].name) + ' — ' + rec.text + '.', rec.flag ? 'warn' : '');
       // находки, которые требуют решения
       if (rec.test === 'cbc' && rec.value.anc < 1.5 && pt.rx.some((r) => r.id === 'clozapine' || r.id === 'carbamazepine') && !pt.pending) startEvent(s, pt, 'neutropenia');
     });
@@ -18928,7 +18957,7 @@ details.note summary {
         const key = x.test + ':' + x.why;
         if (!pt.monMissed[key]) {
           pt.monMissed[key] = s.day;
-          note(s, pt, 'staff', 'Не проведён обязательный контроль: ' + P().TESTS[x.test].name.toLowerCase() + ' (' + x.why + ').', 'warn');
+          note(s, pt, 'staff', 'Не проведён обязательный контроль: ' + P().lc(P().TESTS[x.test].name) + ' (' + x.why + ').', 'warn');
         }
       });
   }
@@ -19710,6 +19739,7 @@ details.note summary {
       preventable: () => true,
       start: (s, pt) => {
         pt.group = 'delirium_tremens';
+        pt.dtStart = s.day;
         pt.dx = 'F10.4 Синдром отмены алкоголя с делирием (развился в отделении).';
         pt.sev = Math.max(pt.sev, 85);
         pt.admitDay = Math.min(pt.admitDay, s.day - 1);
@@ -19907,6 +19937,7 @@ details.note summary {
   /** Ждали ли игрока на обходе в этот день. */
   W.wasExpected = function (s, day) {
     if (A.cal && A.cal.isWeekend(day)) return false;
+    if (G().isSick(s)) return false;
     if (s.phase === 'study') return !!G().scheduleFor(day);
     if (s.phase === 'career') return true;
     return false;
@@ -20238,17 +20269,16 @@ details.note summary {
 
   W.practiceTick = function (s, steps) {
     const w = s.ward;
-    if (!w || w.practice.closed) return;
-    if (!w.practice.start) return;
+    if (!w || w.practice.closed || s.phase === 'career' || s.phase === 'graduate') return;
+    // практика закрывается всегда — даже если ординатор ни разу не пришёл (тогда «не зачтено» и отработка в сессию)
     if (s.day > W.PRACTICE_TO) W.closePractice(s, steps);
   };
 
+  /** Учебные дни практики — знаменатель посещаемости. */
   W.practiceDays = function (s) {
-    const w = s.ward;
-    if (!w || !w.practice.start) return 0;
     let n = 0;
     const last = Math.min(s.day, W.PRACTICE_TO);
-    for (let d = w.practice.start; d <= last; d++) if (G().scheduleFor(d)) n++;
+    for (let d = W.PRACTICE_FROM; d <= last; d++) if (G().scheduleFor(d)) n++;
     return n;
   };
 
@@ -27373,7 +27403,7 @@ details.note summary {
     if (rx.kind === 'int') return '';
     if (rx.prn) return P.fmtDose(rx.dose) + ' по требованию';
     if (rx.route === 'depot') return P.fmtDose(rx.dose) + ' раз в ' + (f.interval || 28) + ' дн.';
-    if (rx.route === 'im') return P.fmtDose(rx.dose) + (f.interval ? ' раз в ' + f.interval + (f.interval === 1 ? ' день' : ' дн.') : '');
+    if (rx.route === 'im') return P.fmtDose(rx.dose) + (f.interval === 1 ? ' ежедневно' : f.interval ? ' раз в ' + f.interval + ' дн.' : '');
     if (rx.route === 'patch') return P.fmtDose(rx.dose) + ' за 24 ч';
     const split = f.split || 1;
     const per = rx.dose / split;
@@ -27441,7 +27471,7 @@ details.note summary {
     if (fresh > 0) chips.push(UI.chip('новых записей: ' + fresh, ''));
     const due = P.dueTests(s, pt);
     if (due.some((x) => x.overdue)) chips.push(UI.chip('просрочен контроль', 'neg'));
-    else if (due.length) chips.push(UI.chip('пора: ' + due.map((x) => P.TESTS[x.test].name.toLowerCase()).join(', '), 'warn'));
+    else if (due.length) chips.push(UI.chip('пора: ' + due.map((x) => P.lc(P.TESTS[x.test].name)).join(', '), 'warn'));
     const day = s.day - pt.admitDay + 1;
     return (
       '<button type="button" class="wcard' + (pt.pending ? ' alarm' : '') + '" data-act="wd-open" data-arg="' + pt.uid + '">' +
@@ -27817,7 +27847,7 @@ details.note summary {
     const { s, p, pt } = cur();
     if (!pt) return;
     const r = W.order(s, pt, test);
-    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.TESTS[test].name.toLowerCase()) + '. Результат будет завтра.');
+    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.lc(P.TESTS[test].name)) + '. Результат будет завтра.');
     save();
   });
   UI.on('wd-add', (kind) => {
