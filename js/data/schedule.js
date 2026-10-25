@@ -31,5 +31,6 @@
     D.minis = D.minis || [];
     D.miniById = {};
     D.minis.forEach((m) => (D.miniById[m.id] = m));
+    if (A.pharma) A.pharma.index();
   };
 })((window.A = window.A || {}));
