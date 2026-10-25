@@ -22,6 +22,10 @@ const shots = flag('--shots', null);
 const seed = +flag('--seed', 1);
 const maxDays = +flag('--days', 999);
 if (shots) fs.mkdirSync(shots, { recursive: true });
+// На устройстве печатаем ход игры по мере прохождения: если эмулятор упадёт, в журнале будет видно, где
+const progress = argv.includes('--android') || argv.includes('--progress');
+const t0 = Date.now();
+const note = (msg) => progress && console.log(`[+${Math.round((Date.now() - t0) / 1000)} с] ${msg}`);
 
 const androidPkg = flag('--android', null);
 const cdp = flag('--cdp', null) || androidPkg;
@@ -73,6 +77,7 @@ const cdp = flag('--cdp', null) || androidPkg;
 
   const shot = async (name) => {
     if (!shots) return;
+    note('снимок ' + name);
     await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: !cdp }).catch((e) => console.log('screenshot failed:', e.message));
   };
   const click = async (sel) => {
@@ -127,6 +132,7 @@ const cdp = flag('--cdp', null) || androidPkg;
       break;
     }
     seenTypes[info.type] = (seenTypes[info.type] || 0) + 1;
+    if (i % 20 === 0) note(`шаг ${i}: день ${info.day}, слот ${info.slot}, ${info.type}${info.stage ? '/' + info.stage : ''}`);
     const tkey = info.type + (info.stage ? '-' + info.stage : '');
     if (!shotTypes[tkey]) {
       shotTypes[tkey] = true;

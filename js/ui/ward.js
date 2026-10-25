@@ -712,6 +712,16 @@
     else finish();
   });
 
+  // Escape на компьютере закрывает лист назначения
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const { p } = cur();
+    if (p && p.sheet) {
+      p.sheet = null;
+      save();
+    }
+  });
+
   /* ================= Справочник: препараты и КР ================= */
   UI.ward = {};
   UI.ward.drugsRef = function (s) {
