@@ -50,10 +50,14 @@ const ok = (cond, msg) => {
   ok(await has('.trainer'), 'экран тренажёра открылся с титула');
   const total = await page.evaluate(() => A.trainer.bank().length);
   ok(total >= 180, 'в банке ' + total + ' вопросов');
+  const off = await page.evaluate(() => [...document.querySelectorAll('.card.official a.btn')].map((a) => ({ href: a.href, target: a.target })));
+  ok(off.length === 2 && off[0].href.startsWith('https://selftest.mededtech.ru') && off.every((x) => x.target === '_blank'), 'ссылка на официальный репетиционный экзамен открывается в новой вкладке');
+  ok(await page.evaluate(() => /не настоящие задания аккредитации/.test(document.querySelector('.trainer').textContent)), 'приписка: тесты игры — не настоящие задания аккредитации');
+  ok(await has('[data-act="tr-start"][data-arg="accr80"]'), 'полный тест — 80 вопросов, как на настоящем тестировании');
   const topics = await page.evaluate(() => A.data.domainKeys.map((k) => [k, A.trainer.topicCount(k)]));
   ok(topics.every(([, n]) => n >= 10), 'в каждой теме не меньше 10 вопросов: ' + topics.map(([k, n]) => k + ' ' + n).join(', '));
 
-  console.log('Тест как на аккредитации, 20 вопросов: 10 верно, 10 неверно');
+  console.log('Тест в формате аккредитации, 20 вопросов: 10 верно, 10 неверно');
   await click('tr-start', 'accr20');
   let r = await run();
   ok(r && r.kind === 'accr20' && r.n === 20, 'прогон начат, 20 вопросов');
@@ -69,6 +73,7 @@ const ok = (cond, msg) => {
   r = await run();
   ok(r.done && r.pct === 50, 'итог 50% (' + r.pct + '%)');
   ok(await has('.result-card .stamp.bad'), 'штамп «не сдано»');
+  ok(await page.evaluate(() => /не официальная аккредитация/.test(document.querySelector('.result-card').textContent)), 'в итогах — приписка, что это не официальная аккредитация');
   ok((await page.locator('.review .marks li').count()) === 10, 'в разборе 10 ошибок');
   let wrong = await page.evaluate(() => A.trainer.wrongRefs().length);
   ok(wrong === 10, 'в работе над ошибками 10 вопросов');

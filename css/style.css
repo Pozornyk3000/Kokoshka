@@ -2498,6 +2498,19 @@ details.note summary {
 }
 
 /* ---------- Тренажёр ---------- */
+a.btn {
+  text-decoration: none;
+}
+.card.official {
+  border-color: var(--stamp);
+  box-shadow: inset 3px 0 0 var(--stamp);
+}
+.trainer .tr-own {
+  margin-top: 26px;
+}
+.trainer .tr-note {
+  margin: -4px 0 4px;
+}
 .trainer .card .row-btns {
   margin-top: 8px;
 }

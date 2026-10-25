@@ -10,6 +10,8 @@
     '<button type="button" class="btn ' + (cls || '') + '" data-act="' + act + '"' + (arg != null ? ' data-arg="' + esc(arg) + '"' : '') + (dis ? ' aria-disabled="true"' : '') + '>' + label + '</button>';
 
   const tv = () => (UI.view.trainer = UI.view.trainer || { run: null, topic: null });
+  // внешняя ссылка: в браузере — новая вкладка, в приложении Android — системный браузер
+  const ext = (label, url, cls) => '<a class="btn ' + (cls || '') + '" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + label + ' ↗</a>';
 
   UI.screens.trainer = function () {
     const v = tv();
@@ -33,9 +35,17 @@
     let out = '<header class="create-head"><span class="eyebrow">Анамнез</span><h1 class="display">Тренажёр</h1>' +
       '<p class="dim">Тесты и ситуационные задачи по психиатрии — ' + total + ' ' + U.plural(total, ['вопрос', 'вопроса', 'вопросов']) + ' и ' + nDx + ' ' + U.plural(nDx, ['задача', 'задачи', 'задач']) + ' на диагноз. На игру не влияет: это подготовка к экзаменам — и к работе.</p></header>';
     out +=
-      '<section class="card"><h2 class="h2">Тест как на аккредитации</h2><p class="small">Вопросы из всех тем, без подсказок по ходу — разбор в конце. «Сдано» — от ' + T.PASS + '% верных ответов.</p>' +
-      '<div class="act-chips">' + best('accr20') + best('accr60') + '</div>' +
-      '<div class="row-btns">' + btn('20 вопросов', 'tr-start', 'accr20', 'primary') + btn('60 вопросов', 'tr-start', 'accr60', '') + '</div></section>';
+      '<section class="card official"><h2 class="h2">Официальный репетиционный экзамен</h2>' +
+      '<p class="small">Настоящие тестовые задания первичной специализированной аккредитации — из единой базы Методического центра аккредитации специалистов. В репетиционном экзамене их можно проходить сколько угодно раз.</p>' +
+      '<p class="small dim">Откроется в браузере, нужен интернет.</p>' +
+      '<div class="row-btns">' + ext('Открыть репетиционный экзамен', T.OFFICIAL.exam, 'primary') + ext('Сайт центра аккредитации', T.OFFICIAL.site, '') + '</div></section>';
+    out +=
+      '<h2 class="step-h tr-own">Тесты игры</h2>' +
+      '<p class="small dim tr-note">Вопросы ниже написаны для «Анамнеза» по клиническим рекомендациям и учебникам. Это не настоящие задания аккредитации: формат тот же — четыре варианта, один верный, «сдано» от ' + T.PASS + '%, — а вопросы свои.</p>';
+    out +=
+      '<section class="card"><h2 class="h2">Тест в формате аккредитации</h2><p class="small">Вопросы из всех тем, без подсказок по ходу — разбор в конце. На настоящей аккредитации — 80 вопросов за 60 минут.</p>' +
+      '<div class="act-chips">' + best('accr20') + best('accr80') + '</div>' +
+      '<div class="row-btns">' + btn('20 вопросов', 'tr-start', 'accr20', 'primary') + btn('80 вопросов', 'tr-start', 'accr80', '') + '</div></section>';
     out += '<section class="card"><h2 class="h2">Тест по теме</h2><p class="small">10 вопросов, после каждого ответа — объяснение.</p><div class="chipbar">';
     D.domainKeys.forEach((k) => {
       const n = T.topicCount(k);
@@ -107,7 +117,9 @@
     const K = T.KINDS[run.kind];
     let out =
       '<section class="result-card"><div class="stamp' + (run.pass ? '' : ' bad') + '"><b>' + run.pct + '%</b><span>' + (K.exam ? (run.pass ? 'сдано' : 'не сдано') : run.pass ? 'хорошо' : 'надо повторить') + '</span></div>' +
-      '<p class="mono small">' + esc(run.kind === 'topic' ? D.domains[run.topic].name : K.name) + ' · верно ' + String(run.right).replace('.', ',') + ' из ' + run.refs.length + '</p></section>';
+      '<p class="mono small">' + esc(run.kind === 'topic' ? D.domains[run.topic].name : K.name) + ' · верно ' + String(run.right).replace('.', ',') + ' из ' + run.refs.length + '</p>' +
+      (K.exam ? '<p class="small dim">Это тренировочный тест игры, а не официальная аккредитация. Настоящие задания — в репетиционном экзамене центра аккредитации.</p>' : '') +
+      '</section>';
     const wrong = run.refs.map((r, i) => ({ r, i, c: T.check(run, i) })).filter((x) => x.c.score < 1);
     if (wrong.length) {
       out += '<section class="review"><h2 class="step-h">Разбор ошибок</h2><ul class="marks">';
