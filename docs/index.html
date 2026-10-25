@@ -22808,6 +22808,8 @@ details.note summary {
     // врач ушёл с амбулаторного приёма — пациентов принимает коллега
     if (M.capacity(s) === 0 && M.active(s).length) M.handoverAll(s, 'Вы больше не ведёте амбулаторный приём: пациентов приняли коллеги.');
     M.active(s).forEach((pt) => {
+      // звонок без ответа два дня — решает дежурный врач
+      if (pt.pending && s.day - pt.pending.day >= 2) autoResolve(s, pt);
       try {
         tickPt(s, pt);
       } catch (e) {
