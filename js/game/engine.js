@@ -40,6 +40,7 @@
       phase: 'study',
       study: { lectures: {}, seminars: {}, debts: [], rating: 0, ratingMax: 0, exams: {}, automat: null, diploma: null, accr: null },
       ward: A.ward ? A.ward.blank() : null,
+      amb: A.clinic ? A.clinic.blank() : null,
       career: null,
       science: { pubs: 0, draft: 0, talk: false },
       housing: 'dorm',
@@ -373,6 +374,8 @@
     const steps = [];
     // Пациенты в отделении живут своей жизнью и без врача
     if (A.ward && s.ward) A.ward.tick(s, steps);
+    // и пациенты амбулаторного участка — между визитами
+    if (A.clinic && s.amb) A.clinic.tick(s);
     // Неделя закончилась
     if (C.wd(s.day) === 0) {
       const sum = G.settleWeek(s, prevDay);

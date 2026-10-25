@@ -145,6 +145,86 @@ function wardRound(st) {
 }
 const wardStats = { rounds: 0, rx: 0, errs: 0 };
 
+/** Амбулаторный приём: звонки, визиты, старт лечения по КР, титрация, контроль, перевод на редкие визиты. */
+function ambDay(st) {
+  const M = A.clinic;
+  const W = A.ward;
+  const P = A.pharma;
+  const list = st.list || M.beginDay(s).list;
+  const res = { kind: 'amb', visits: 0, avg: 0, calls: 0, pay: 0, closed: 0 };
+  let sum = 0;
+  M.active(s).forEach((pt) => {
+    if (!pt.pending) return;
+    const ev = M.EVENTS[pt.pending.k];
+    const best = ev.opts.findIndex((o) => (typeof o.ok === 'function' ? o.ok(s, pt) : o.ok) === true);
+    M.decide(s, pt, chance(skill) ? best : Math.floor(rand() * ev.opts.length));
+    res.calls++;
+    if (pt.urgent && !pt.away && list.indexOf(pt.uid) < 0) list.push(pt.uid);
+  });
+  list.forEach((uid) => {
+    const pt = M.byUid(s, uid);
+    if (!pt || pt.done || pt.away || pt.pending) return;
+    M.beginVisit(s, pt);
+    const t = M.tpl(pt);
+    if (pt.dxOk == null && t.dxq) {
+      const ok = t.dxq.opts.findIndex((o) => o.ok === true);
+      M.chooseDx(s, pt, chance(skill) ? ok : Math.floor(rand() * t.dxq.opts.length));
+    }
+    if (pt.vis.kind === 'first') ['explain', 'safety'].forEach((k) => chance(skill) && M.talk(s, pt, k));
+    if (pt.vis.report.some((x) => x.k === 'stopped' || x.k === 'wantsStop') && chance(skill)) M.talk(s, pt, 'adherence');
+    const g = P.gl(pt);
+    const ph = g && g.phases ? g.phases[P.phase(pt)] || g.phases.acute : null;
+    const hasFirst = pt.rx.some((r) => !r.home && !r.held && P.line(pt, P.item(r)).line === 'first');
+    if (ph && !hasFirst && pt.sev >= 25) {
+      let cands = [];
+      (ph.first || []).forEach((e) => {
+        const en = typeof e === 'string' ? { id: e } : e;
+        if (en.id) cands.push(P.int(en.id) ? { kind: 'int', id: en.id } : { kind: 'drug', id: en.id });
+        else (D.drugs || []).forEach((d) => (en.cls ? d.cls === en.cls : d.group === en.group) && cands.push({ kind: 'drug', id: d.id }));
+      });
+      cands = cands.filter((c) => (c.kind === 'int' ? P.int(c.id) && (!P.int(c.id).where || P.int(c.id).where.indexOf('amb') >= 0) : P.drug(c.id)));
+      const tags = P.tags(pt);
+      const safe = cands.filter((c) => c.kind === 'int' || !(P.drug(c.id).contra || []).some((x) => tags[x.t] && x.sev !== 'moderate'));
+      const pool = chance(skill) ? safe : cands;
+      const c = pool[Math.floor(rand() * pool.length)];
+      if (c && c.kind === 'int') W.prescribe(s, pt, { kind: 'int', id: c.id });
+      else if (c) {
+        const d = P.drug(c.id);
+        const route = (d.forms.find((f) => f.route === 'po') || d.forms[0]).route;
+        const r = P.range(d, route, pt);
+        const steps = P.form(d, route).steps || [];
+        let dose = r && r.start != null ? r.start : steps[0];
+        if (steps.indexOf(dose) < 0) dose = steps.reduce((a, b) => (Math.abs(b - dose) < Math.abs(a - dose) ? b : a), steps[0]);
+        W.prescribe(s, pt, { kind: 'drug', id: d.id, route, dose });
+      }
+    }
+    pt.rx.forEach((r, i) => {
+      if (r.kind === 'int' || r.prn || r.home || r.pre) return;
+      const d = P.drug(r.id);
+      const rg = P.range(d, r.route, pt);
+      if (rg && r.dose < rg.min && s.day - (r.changed || r.since) >= 3 && chance(skill)) W.stepDose(s, pt, i, 1);
+      if (r.held && chance(skill)) W.stepDose(s, pt, i, -1);
+    });
+    if (chance(skill)) P.dueTests(s, pt).forEach((x) => W.order(s, pt, x.test));
+    const next = pt.sev >= 55 ? 3 : pt.sev >= 30 ? 7 : 14;
+    const r = M.endVisit(s, pt, next);
+    res.pay += M.reward(s, pt, r.score);
+    res.visits++;
+    sum += r.score;
+    if (M.canClose(s, pt).ok && pt.visits.filter((v) => v.kind !== 'past').length >= 3) {
+      M.close(s, pt, 'rare');
+      res.closed++;
+    }
+  });
+  M.archiveDone(s);
+  res.avg = res.visits ? Math.round(sum / res.visits) : 0;
+  ambStats.days++;
+  ambStats.visits += res.visits;
+  ambStats.calls += res.calls;
+  return G.stepDone(res);
+}
+const ambStats = { days: 0, visits: 0, calls: 0 };
+
 function resolveStep() {
   const act = s.activity;
   const st = act.steps[act.i];
@@ -155,6 +235,8 @@ function resolveStep() {
       return G.stepDone(null);
     case 'ward':
       return wardRound(st);
+    case 'amb':
+      return ambDay(st);
     case 'shop':
       return G.stepDone(null);
     case 'event': {
@@ -302,6 +384,11 @@ if (argv.includes('--ward')) {
   const P = A.pharma;
   for (const x of (s.ward && s.ward.done) || []) console.log('  выписка/передача', x.tpl, x.how, x.score, 'дн', x.end - x.admit, 'тяжесть', x.sev0, '→', x.sev, x.rx.map((r) => r.id + ':' + r.dose).join(','));
   for (const pt of A.ward.active(s)) console.log('  в отделении', pt.tpl, pt.mode, 'день', s.day - pt.admitDay, 'тяжесть', Math.round(pt.sev0), '→', Math.round(pt.sev), pt.rx.map((r) => r.id + ':' + r.dose).join(','), 'события', pt.events.map((e) => e.k).join(','));
+}
+{
+  const ad = (s.amb && s.amb.done) || [];
+  const rare = ad.filter((x) => x.how === 'rare');
+  console.log(`Амбулаторный приём: дней ${ambStats.days}, визитов ${ambStats.visits}, звонков ${ambStats.calls}; на участке ${A.clinic ? A.clinic.active(s).length : 0}; переведены на редкие визиты ${rare.length} (ср. ${rare.length ? Math.round(rare.reduce((a, x) => a + x.score, 0) / rare.length) : 0}), переданы ${ad.length - rare.length}`);
 }
 if (argv.includes('--ward')) {
   console.log('  последний обход: день', s.ward.lastRound, '; сегодня', s.day, '; работа', s.career && s.career.job);

@@ -2354,3 +2354,107 @@ details.note summary {
 .fb-head > div {
   text-align: left;
 }
+
+/* ---------- Амбулаторный приём ---------- */
+.wcard.seen {
+  opacity: 0.72;
+}
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 4px;
+}
+.file-link svg {
+  width: 18px;
+  height: 18px;
+}
+.visit-fb b {
+  display: block;
+}
+.scale-box {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+.scale-v {
+  font-family: var(--f-mono);
+  font-size: 24px;
+  line-height: 1.1;
+}
+.scale-box .pos {
+  color: var(--ok);
+}
+.scale-box .neg {
+  color: var(--alarm);
+}
+.talks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+.talks .chipbtn {
+  text-align: left;
+}
+.talks .chipbtn[aria-disabled='true'] {
+  cursor: default;
+}
+.talk-out {
+  margin-bottom: 10px;
+}
+.end-visit {
+  margin-top: 14px;
+}
+.end-visit .seg {
+  margin-bottom: 4px;
+}
+.end-visit .row-btns {
+  justify-content: center;
+}
+.rx.held .rx-dose {
+  text-decoration: line-through;
+  text-decoration-color: var(--warn);
+}
+.tseg {
+  margin: 4px 0 0;
+}
+.tseg .seg-b {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.dx-res.ok {
+  border-color: var(--ok);
+}
+.dx-res.part {
+  border-color: var(--warn);
+}
+.dx-res.bad {
+  border-color: var(--alarm);
+}
+
+.seg.segb {
+  width: auto;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.fb-head > .npc {
+  flex: none;
+}
+.seg.segb .seg-b {
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--paper);
+}
+.seg.segb .seg-b[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}

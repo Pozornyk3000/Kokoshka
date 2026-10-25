@@ -98,6 +98,10 @@
     delirium_tremens: ['fear', 'confused'],
     dementia_bpsd: ['confused', 'confused'],
     bpd_crisis: ['angry', 'sad'],
+    bipolar_maint: ['elated', 'sad'],
+    alcohol_dependence: ['tired', 'anxious'],
+    insomnia: ['tired', 'tired'],
+    dementia_mild: ['confused', 'neutral'],
   };
   function emotion(pt) {
     const st = P.stage(pt.sev).k;
@@ -152,12 +156,14 @@
     return P.fmtDose(rx.dose) + '/сут' + (split > 1 && per >= 0.25 ? ' <span class="dim">(' + num(per) + ' × ' + split + ')</span>' : '');
   }
 
+  /** Текущий шаг: обход отделения или амбулаторный приём — лист назначений и анализы у них общие. */
   function cur() {
     const s = A.state;
     const step = s && s.activity && s.activity.steps[s.activity.i];
-    if (!step || step.type !== 'ward') return {};
+    if (!step || (step.type !== 'ward' && step.type !== 'amb') || !step.p) return {};
     const p = step.p;
-    return { s, step, p, pt: p && p.open ? W.byUid(s, p.open) : null };
+    const pt = p.open ? (step.type === 'amb' ? A.clinic.byUid(s, p.open) : W.byUid(s, p.open)) : null;
+    return { s, step, p, pt };
   }
   const save = () => {
     G.save();
@@ -180,6 +186,7 @@
   };
 
   function boss(p) {
+    if (p.amb) return A.clinic.bossNpc(A.state) || 'director';
     return p.mode === 'study' ? 'kandinsky' : 'shubin';
   }
 
@@ -327,31 +334,73 @@
     return '<div class="dnote k-' + n.kind + (n.lvl ? ' l-' + n.lvl : '') + (fresh ? ' fresh' : '') + '"><span class="mono dim small">' + esc(C.fmtShort(n.day)) + ' · ' + who + '</span><p>' + body + '</p></div>';
   }
 
-  function rxTab(s, p, pt) {
-    let out = '<h3 class="step-h">Лист назначений</h3>';
+  /** Дни лечения: на амбулаторном приёме игровой день — несколько дней приёма препарата. */
+  const rxDays = (s, pt, since) => Math.round((s.day - since) * (pt.mode === 'amb' ? W.speed(pt) : 1));
+  function timeSeg(pt, rx, i, item, ro) {
+    if (rx.kind === 'int' || rx.prn || !P.oral(rx.route)) return '';
+    if (ro) return rx.time ? '<span class="small">Приём: ' + esc(P.TIMES[rx.time]) + '</span>' : '';
+    const f = P.form(item, rx.route);
+    const opts = ['am', 'pm'].concat((f.split || 1) > 1 || rx.time === 'split' ? ['split'] : []);
+    const adv = P.timeAdvice(item);
+    return (
+      '<div class="seg segb tseg" role="group" aria-label="Время приёма">' +
+      opts.map((t) => '<button type="button" class="seg-b" data-act="wd-time" data-arg="' + i + ':' + t + '" aria-pressed="' + (rx.time === t) + '">' + esc(P.TIMES[t]) + (adv === t ? ' ✓' : '') + '</button>').join('') +
+      '</div>'
+    );
+  }
+  function rxNote(s, pt, rx) {
+    const amb = pt.mode === 'amb';
+    const days = rxDays(s, pt, rx.since);
+    const parts = [];
+    if (rx.home) parts.push(amb ? 'назначил другой врач' : 'принимал' + W.pv(pt, '', 'а') + ' до поступления');
+    else if (rx.pre) parts.push('назначил прежний врач');
+    else if (rx.hosp) parts.push('назначено в стационаре');
+    parts.push(days > 0 ? (amb ? 'принимает ' + days + ' ' + U.plural(days, ['день', 'дня', 'дней']) : days + '-й день приёма') : 'назначено сегодня');
+    if (rx.route === 'depot' && rx.lastInj != null && amb) {
+      const every = P.form(P.drug(rx.id), 'depot').interval || 28;
+      const ago = rxDays(s, pt, rx.lastInj);
+      parts.push(ago <= 0 ? 'инъекция сделана сегодня' : 'инъекция ' + ago + ' дн. назад, следующая — через ' + Math.max(0, every - ago) + ' дн.');
+    }
+    return parts.join(' · ');
+  }
+  /** ro — только просмотр (амбулаторная карта вне визита). */
+  function rxTab(s, p, pt, ro) {
+    let out = '<h3 class="step-h">' + (pt.mode === 'amb' ? 'Текущее лечение' : 'Лист назначений') + '</h3>';
     if (!pt.rx.length) out += '<p class="empty">Назначений пока нет.</p>';
     out += '<div class="rxlist">';
     pt.rx.forEach((rx, i) => {
       const item = P.item(rx);
       if (!item) return;
-      const days = s.day - rx.since;
+      const days = rxDays(s, pt, rx.since);
       if (rx.kind === 'int') {
-        out += '<div class="rx int"><div class="rx-main"><b>' + esc(item.name) + '</b><span class="dim small">' + (days > 0 ? days + '-й день' : 'с сегодняшнего дня') + '</span></div><div class="rx-btns">' + btn('Отменить', 'wd-stop', i, 'small ghost') + '</div></div>';
+        out += '<div class="rx int"><div class="rx-main"><b>' + esc(item.name) + '</b><span class="dim small">' + (days > 0 ? (pt.mode === 'amb' ? days + ' дн.' : days + '-й день') : 'с сегодняшнего дня') + '</span></div>' + (ro ? '' : '<div class="rx-btns">' + btn('Отменить', 'wd-stop', i, 'small ghost') + '</div>') + '</div>';
         return;
       }
       const f = P.form(item, rx.route);
       const steps = f.steps || [];
       const k = steps.indexOf(rx.dose);
       out +=
-        '<div class="rx"><div class="rx-main"><b>' + esc(item.name) + '</b> <span class="dim small">' + esc(f.label || P.ROUTES[rx.route]) + '</span>' +
-        '<span class="rx-dose">' + doseText(item, rx) + '</span>' +
-        '<span class="dim small">' + (rx.home ? 'принимал' + W.pv(pt, '', 'а') + ' до поступления · ' : '') + (days > 0 ? days + '-й день приёма' : 'назначено сегодня') + '</span></div>' +
-        '<div class="rx-btns">' +
-        (rx.prn ? '' : btn('−', 'wd-down', i, 'small', k === 0) + btn('+', 'wd-up', i, 'small', k === steps.length - 1)) +
-        btn('×', 'wd-stop', i, 'small ghost') +
-        '</div></div>';
+        '<div class="rx' + (rx.held ? ' held' : '') + '"><div class="rx-main"><b>' + esc(item.name) + '</b> <span class="dim small">' + esc(f.label || P.ROUTES[rx.route]) + '</span>' +
+        '<span class="rx-dose">' + doseText(item, rx) + (rx.held ? ' ' + UI.chip('приостановлен', 'warn') : '') + '</span>' +
+        '<span class="dim small">' + esc(rxNote(s, pt, rx)) + '</span>' +
+        timeSeg(pt, rx, i, item, ro) +
+        (rx.held && !ro ? btn('Возобновить в этой дозе', 'wd-resume', i, 'small') : '') +
+        '</div>' +
+        (ro
+          ? ''
+          : '<div class="rx-btns">' +
+            (rx.prn ? '' : btn('−', 'wd-down', i, 'small', k === 0) + btn('+', 'wd-up', i, 'small', k === steps.length - 1)) +
+            btn('×', 'wd-stop', i, 'small ghost') +
+            '</div>') +
+        '</div>';
     });
     out += '</div>';
+    if (ro) {
+      const home = pt.meds_home || [];
+      if (home.length) out += '<h3 class="step-h">Сопутствующие препараты</h3><ul class="home-meds">' + home.map((m) => '<li>' + esc(m.name) + '</li>').join('') + '</ul>';
+      return out;
+    }
+    if (pt.rx.some((r) => r.kind !== 'int' && P.oral(r.route) && !r.prn)) out += '<p class="small dim">✓ — время приёма по инструкции. Чем меньше приёмов в день, тем реже пропуски.</p>';
     out += '<div class="row-btns">' + btn(UI.icon('plus') + ' Назначить препарат', 'wd-add', 'drug', 'primary') + btn('Без лекарств', 'wd-add', 'int', '') + '</div>';
     const home = pt.meds_home || [];
     if (home.length) {
@@ -364,24 +413,24 @@
     return out;
   }
 
-  function testsTab(s, p, pt) {
+  function testsTab(s, p, pt, ro) {
     const due = P.dueTests(s, pt).map((x) => x.test);
-    let out = '<h3 class="step-h">Назначить обследование</h3><div class="tests">';
-    Object.keys(P.TESTS).forEach((k) => {
+    let out = ro ? '<div>' : '<h3 class="step-h">Назначить обследование</h3><div class="tests">';
+    Object.keys(ro ? {} : P.TESTS).forEach((k) => {
       const T = P.TESTS[k];
       const today = pt.tests.some((x) => x.test === k && x.day === s.day);
       out +=
         '<button type="button" class="test' + (due.indexOf(k) >= 0 ? ' due' : '') + '" data-act="wd-order" data-arg="' + k + '"' + (today ? ' aria-disabled="true"' : '') + '>' +
-        '<b>' + esc(T.name) + '</b><span class="dim small">' + (today ? 'назначено сегодня' : T.cito ? 'результат сразу' : 'результат завтра') + '</span></button>';
+        '<b>' + esc(T.name) + '</b><span class="dim small">' + (today ? 'назначено сегодня' : T.cito ? 'результат сразу' : pt.mode === 'amb' ? 'результат к следующему визиту' : 'результат завтра') + '</span></button>';
     });
     out += '</div>';
-    const res = pt.tests.slice().reverse();
+    const res = pt.tests.filter((r) => !r.auto || r.flag).slice().reverse().slice(0, 30);
     out += '<h3 class="step-h">Результаты</h3>';
     if (!res.length) out += '<p class="empty">Обследований ещё не было.</p>';
     else
       out +=
         '<ul class="results">' +
-        res.map((r) => '<li' + (r.flag ? ' class="flag"' : '') + '><span class="mono dim small">' + esc(C.fmtShort(r.day)) + '</span> <b>' + esc(P.TESTS[r.test].name) + '</b>: ' + (r.value ? esc(r.text) : '<span class="dim">ждём результат</span>') + '</li>').join('') +
+        res.map((r) => '<li' + (r.flag ? ' class="flag"' : '') + '><span class="mono dim small">' + esc(pt.mode === 'amb' ? A.clinic.dayText(s, r.day) : C.fmtShort(r.day)) + '</span> <b>' + esc(P.TESTS[r.test].name) + '</b>: ' + (r.value ? esc(r.text) : '<span class="dim">ждём результат</span>') + '</li>').join('') +
         '</ul>';
     return out;
   }
@@ -424,6 +473,10 @@
         delirium_tremens: 'anxiolytic',
         dementia_bpsd: 'dementia',
         bpd_crisis: 'int',
+        bipolar_maint: 'moodstab',
+        alcohol_dependence: 'addiction',
+        insomnia: 'hypnotic',
+        dementia_mild: 'dementia',
       }[pt.group] || 'antipsychotic'
     );
   }
@@ -441,7 +494,7 @@
       body += '<p class="small dim">' + esc(CLS[d.cls] || '') + (d.aka ? ' · ' + esc(d.aka) : '') + '</p><p class="small">' + esc(d.notes || '') + '</p>';
       if (forms.length > 1)
         body +=
-          '<div class="seg" role="group" aria-label="Форма">' +
+          '<div class="seg segb" role="group" aria-label="Форма">' +
           forms.map((x) => '<button type="button" class="seg-b" data-act="wd-sroute" data-arg="' + x.route + '" aria-pressed="' + (x.route === sh.route) + '">' + esc(P.ROUTES[x.route]) + '</button>').join('') +
           '</div><p class="small dim">' + esc(f.label || '') + '</p>';
       else body += '<p class="small"><b>Форма:</b> ' + esc(f.label || P.ROUTES[f.route]) + '</p>';
@@ -451,13 +504,22 @@
         '<div class="doses" role="group" aria-label="Доза">' +
         (f.steps || []).map((x) => '<button type="button" class="dose" data-act="wd-sdose" data-arg="' + x + '" aria-pressed="' + (x === sh.dose) + '">' + num(x) + '</button>').join('') +
         '</div><p class="small dim">' + (f.prn ? 'Разовая доза, вводится по требованию.' : P.oral(sh.route) ? 'мг в сутки' + (f.split > 1 ? ', в ' + f.split + ' приёма' : '') : sh.route === 'patch' ? 'мг за 24 часа' : 'мг на введение') + '</p>';
+      if (P.oral(sh.route) && !f.prn) {
+        const adv = P.timeAdvice(d);
+        const opts = ['am', 'pm'].concat((f.split || 1) > 1 ? ['split'] : []);
+        body +=
+          '<p class="small"><b>Когда принимать:</b></p><div class="seg segb" role="group" aria-label="Время приёма">' +
+          opts.map((t) => '<button type="button" class="seg-b" data-act="wd-stime" data-arg="' + t + '" aria-pressed="' + (sh.time === t) + '">' + esc(P.TIMES[t]) + (adv === t ? ' ✓' : '') + '</button>').join('') +
+          '</div>' + (adv ? '<p class="small dim">✓ — ' + (adv === 'pm' ? 'вызывает сонливость, удобнее вечером' : 'может бодрить, лучше утром') + '.</p>' : '');
+      }
       if (dupe) body += '<p class="note warn">Этот препарат в этой форме уже назначен — изменится доза.</p>';
       body += '<div class="row-btns spread">' + btn('← Список', 'wd-sback', null, 'ghost') + btn('Назначить', 'wd-sok', null, 'primary', sh.dose == null) + '</div>';
     } else {
       const tabs = P.GROUP_TABS.map((t) => '<button type="button" class="tab" role="tab" data-act="wd-sgroup" data-arg="' + t[0] + '" aria-selected="' + (sh.group === t[0]) + '">' + esc(t[1]) + '</button>').join('');
       body += '<div class="tabs small-tabs" role="tablist">' + tabs + '</div><div class="sheet-list">';
       if (sh.group === 'int') {
-        (D.interventions || []).forEach((it) => {
+        const place = pt.mode === 'amb' ? 'amb' : 'ward';
+        (D.interventions || []).filter((it) => !it.where || it.where.indexOf(place) >= 0).forEach((it) => {
           const on = pt.rx.some((x) => x.kind === 'int' && x.id === it.id);
           body += '<button type="button" class="opt" data-act="wd-sint" data-arg="' + it.id + '"' + (on ? ' aria-disabled="true"' : '') + '><span class="opt-main"><span class="opt-t">' + esc(it.name) + (on ? ' <span class="chip">назначено</span>' : '') + '</span><span class="opt-sub">' + esc(it.note || '') + '</span></span></button>';
         });
@@ -591,7 +653,7 @@
     const { s, p, pt } = cur();
     if (!pt) return;
     const r = W.order(s, pt, test);
-    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.lc(P.TESTS[test].name)) + '. Результат будет завтра.');
+    if (r) UI.toast(r.value ? '<b>' + esc(P.TESTS[test].name) + ':</b> ' + esc(r.text) : 'Назначено: ' + esc(P.lc(P.TESTS[test].name)) + (pt.mode === 'amb' ? '. Результат придёт к следующему визиту.' : '. Результат будет завтра.'));
     save();
   });
   UI.on('wd-add', (kind) => {
@@ -619,6 +681,7 @@
   });
   function setRoute(sh, d, route, pt, ex) {
     sh.route = route;
+    sh.time = ex && ex.route === route && ex.time ? ex.time : P.defaultTime(d, route);
     const f = P.form(d, route);
     const r = P.range(d, route, pt);
     const steps = f.steps || [];
@@ -631,6 +694,35 @@
     if (!p || !p.sheet || !p.sheet.id) return;
     const d = P.drug(p.sheet.id);
     setRoute(p.sheet, d, route, pt, pt.rx.find((x) => x.id === d.id && x.route === route));
+    save();
+  });
+  UI.on('wd-stime', (t) => {
+    const { p } = cur();
+    if (!p || !p.sheet || !P.TIMES[t]) return;
+    p.sheet.time = t;
+    save();
+  });
+  UI.on('wd-time', (arg) => {
+    const { s, p, pt } = cur();
+    if (!pt) return;
+    const [i, t] = String(arg).split(':');
+    const rx = pt.rx[+i];
+    if (!rx) return;
+    const msgs = W.setTime(s, pt, +i, t);
+    if (pt.vis) pt.vis.timeChanged = true;
+    fb(p, pt, P.item(rx).name + ': ' + P.TIMES[t], msgs);
+    save();
+  });
+  UI.on('wd-resume', (i) => {
+    const { s, p, pt } = cur();
+    if (!pt) return;
+    const rx = pt.rx[+i];
+    if (!rx || !rx.held) return;
+    rx.held = false;
+    rx.heldDay = null;
+    rx.changed = s.day;
+    W.log(s, pt, P.item(rx).name + ': приём возобновлён в прежней дозе.');
+    fb(p, pt, P.item(rx).name + ': приём возобновлён', [{ lvl: 'info', text: 'Препарат снова в листе назначений. Если причиной паузы была токсичность — проверьте концентрацию или анализы через несколько дней.' }]);
     save();
   });
   UI.on('wd-sdose', (x) => {
@@ -655,7 +747,7 @@
     const { s, p, pt } = cur();
     if (!pt || !p.sheet || !p.sheet.id || p.sheet.dose == null) return;
     const d = P.drug(p.sheet.id);
-    const msgs = W.prescribe(s, pt, { id: d.id, kind: 'drug', route: p.sheet.route, dose: p.sheet.dose });
+    const msgs = W.prescribe(s, pt, { id: d.id, kind: 'drug', route: p.sheet.route, dose: p.sheet.dose, time: p.sheet.time });
     fb(p, pt, d.name + ' ' + P.fmtDose(p.sheet.dose), msgs);
     p.sheet = null;
     p.tab = 'rx';
@@ -724,6 +816,8 @@
 
   /* ================= Справочник: препараты и КР ================= */
   UI.ward = {};
+  /** Общие части для амбулаторного приёма (js/ui/clinic.js). */
+  UI.ward.h = { btn, num, years, portrait, spark, doseText, feedback, sheet, rxTab, testsTab, infoTab, shortDx, fill, mdFill, fb, emotion, LVL, SE_NAME, CLS, DOMAIN, cur, rxDays };
   UI.ward.drugsRef = function (s) {
     const g = UI.view.drugGroup || 'antipsychotic';
     const open = UI.view.refItem;

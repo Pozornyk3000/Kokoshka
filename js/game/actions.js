@@ -508,6 +508,7 @@
       s.career.weekWorked++;
       s.stats.workdays++;
       G.apply(s, { energy: -Math.round(job.energy * 0.85), stress: job.stress, xp: 6 });
+      if (A.clinic) A.clinic.autoDay(s, 'Вы (приём без разбора)', true);
       const avg = G.knowAvg(s);
       const risk = 0.22 - avg / 600 + (s.energy < 25 ? 0.12 : 0) + (s.burnout.active ? 0.1 : 0);
       if (U.chance(risk)) {
@@ -1077,10 +1078,20 @@
     if (!s.flags['intro_' + s.career.job]) steps.push({ type: 'story', story: 'job_intro_' + s.career.job });
     else steps.push({ type: 'story', story: 'work_day' });
     if (A.ward && A.ward.capacity(s) > 0) steps.push({ type: 'ward', mode: 'work' });
+    // амбулаторный приём: звонки, записанные, первичные — список дня составляется сразу
+    let seen = 0;
+    if (A.clinic && A.clinic.capacity(s) > 0) {
+      const day = A.clinic.beginDay(s);
+      if (late) day.list = day.list.slice(0, 2);
+      seen = day.list.length;
+      steps.push({ type: 'amb', list: day.list, fresh: day.fresh });
+    }
+    // если приём короткий — ещё сложный случай или вопросы коллег
+    const busy = seen >= 2 || (seen >= 1 && A.ward && A.ward.capacity(s) > 0);
     let caseId = null;
-    if (!late && U.chance(job.caseChance)) caseId = G.pickCase(s, job.settings);
+    if (!late && !busy && U.chance(job.caseChance)) caseId = G.pickCase(s, job.settings);
     if (caseId) steps.push({ type: 'case', id: caseId, mode: 'work' });
-    else steps.push({ type: 'mini', mode: 'work', ids: G.pickMinis(s, job.settings.concat(['followup']), late ? 1 : 2) });
+    else if (!busy) steps.push({ type: 'mini', mode: 'work', ids: G.pickMinis(s, job.settings.concat(['followup']), late ? 1 : 2) });
     return { steps, late };
   };
 
@@ -1096,6 +1107,11 @@
     const r = (res || []).find((x) => x && (x.kind === 'case' || x.kind === 'mini'));
     const wr = (res || []).find((x) => x && x.kind === 'ward');
     if (wr && wr.discharged && wr.discharged.length) out.push('Выписаны: ' + wr.discharged.map((x) => x.name + ' (' + x.score + ')').join(', ') + '.');
+    const ar = (res || []).find((x) => x && x.kind === 'amb');
+    if (ar && ar.visits) {
+      out.push('Приём: ' + ar.visits + ' ' + U.plural(ar.visits, ['пациент', 'пациента', 'пациентов']) + (ar.avg ? ', средняя оценка визитов — ' + ar.avg : '') + (ar.calls ? ', звонков — ' + ar.calls : '') + (ar.closed ? ', переведены на редкие визиты — ' + ar.closed : '') + '.');
+      if (ar.pay) out.push('Оплата приёмов: ' + U.money(ar.pay) + '.');
+    }
     if (r && r.kind === 'case') {
       const repGain = ((r.score - 60) / 22) * job.rep;
       G.apply(s, { rep: repGain });
@@ -1114,7 +1130,7 @@
       G.apply(s, { rep: (r.right - (r.total - r.right) * 1.5) * 0.4 * job.rep });
       out.unshift('Рабочий день окончен. Приём: ' + U.int(9, 14) + ' пациентов, из них ' + r.total + ' — с вопросами посложнее (верно: ' + r.right + ').');
     } else {
-      out.unshift('Рабочий день окончен.');
+      out.unshift(ar && ar.visits ? 'Рабочий день окончен. Амбулаторные карты заполнены, медсестра выключает свет в кабинете.' : 'Рабочий день окончен.');
     }
     if (late) out.push('Опоздание заведующий заметил, но промолчал. Оплачено полдня.');
     return out.join(' ');
@@ -1200,6 +1216,7 @@
       if (s.career && !C.isWeekend(s.day)) {
         s.career.today = s.day;
         s.career.weekWorked++;
+        if (A.clinic) A.clinic.autoDay(s, 'Коллега (вы в отпуске)');
       }
       G.apply(s, { stress: trip ? -9 : -6, health: trip ? 2 : 1 });
       s.slot = 3;

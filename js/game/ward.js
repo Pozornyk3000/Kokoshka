@@ -280,7 +280,15 @@
   }
 
   /** Учебные пациенты на практике «проживают» госпитализацию быстрее: практика длится всего две недели. */
-  W.speed = (pt) => (pt.mode === 'study' ? 1.5 : 1);
+  W.speed = (pt) => (pt.mode === 'study' ? 1.5 : pt.mode === 'amb' ? (A.clinic ? A.clinic.SPEED : 2) : 1);
+
+  /** Какую долю таблеток пациент на самом деле принимает. Дома тот, кто «бросил лечение», обычно продолжает пить только транквилизатор. */
+  function adhOf(pt, item) {
+    if (pt.mode !== 'amb') return pt.adherence;
+    if (pt.stopped) return item && (item.cls === 'bzd' || item.cls === 'z') ? 0.95 : 0.05;
+    return pt.adherence;
+  }
+  W.adhOf = adhOf;
 
   /** Суммарный эффект лечения по доменам группы (0..1). */
   function efficacy(s, pt) {
@@ -290,7 +298,7 @@
     doms.forEach((k) => (per[k] = []));
     pt.rx.forEach((rx) => {
       const item = P().item(rx);
-      if (!item) return;
+      if (!item || rx.held) return;
       const on = (s.day - rx.since) * sp;
       doms.forEach((k) => {
         let e = (item.eff && item.eff[k]) || 0;
@@ -303,27 +311,29 @@
           return;
         }
         if (rx.prn) return;
-        // к противотревожному и седативному действию бензодиазепинов развивается толерантность
-        if (item.cls === 'bzd' && k !== 'withdrawal') e *= U.clamp(1 - (s.day - rx.since - 14) / 50, 0.15, 1);
+        // к противотревожному и снотворному действию бензодиазепинов и Z-гипнотиков развивается толерантность
+        if ((item.cls === 'bzd' || item.cls === 'z') && k !== 'withdrawal') e *= U.clamp(1 - ((s.day - rx.since) * sp - 14) / 50, 0.15, 1);
         const lvl = P().levelMult(pt, item);
         const gf = gfOf(P().doseFactor(rx, pt) * lvl);
         const onset = onsetOf(item, k);
         let start = rx.since;
+        let adh = adhOf(pt, item);
         if (rx.route === 'depot') {
           // пролонгированная форма продолжает действие таблеток того же препарата
           const prior = kinStart(pt, rx);
           if (prior != null) start = Math.min(start, prior);
-          e *= depotPk(s, pt, rx);
+          e *= depotPk(s, pt, rx) * depotCover(s, pt, rx);
+          adh = 1; // инъекцию делает медсестра — пропусков таблеток тут нет
         }
         if (rx.home) {
           // привычная схема уже «вошла» в исходное состояние: новый эффект даёт только прибавка дозы
           const g0 = gfOf(P().doseFactor({ id: rx.id, route: rx.route, dose: rx.baseDose }, pt) * lvl);
           const add = Math.max(0, gf - g0);
-          e *= add * ramp((s.day - (rx.upSince || s.day)) * sp, onset) * respOf(pt, item) * pt.adherence;
+          e *= add * ramp((s.day - (rx.upSince || s.day)) * sp, onset) * respOf(pt, item) * adhOf(pt, item);
           per[k].push(e);
           return;
         }
-        e *= gf * ramp((s.day - start) * sp, onset) * respOf(pt, item) * pt.adherence;
+        e *= gf * ramp((s.day - start) * sp, onset) * respOf(pt, item) * adh;
         per[k].push(e);
       });
     });
@@ -350,6 +360,16 @@
     });
     return best;
   }
+  /** Амбулаторно: действие инъекции слабеет, если следующую пропустили (дни — «биологические»). */
+  function depotCover(s, pt, rx) {
+    if (pt.mode !== 'amb' || rx.lastInj == null) return 1;
+    const f = P().form(P().drug(rx.id), 'depot');
+    const every = f.interval || 28;
+    const since = (s.day - rx.lastInj) * W.speed(pt);
+    if (since <= every + 7) return 1;
+    return U.clamp(1 - (since - every - 7) / every, 0.1, 1);
+  }
+  W.depotCover = depotCover;
   /** Набор концентрации пролонгированной формы: пока она не достигнута, нужны таблетки. */
   function depotPk(s, pt, rx) {
     const f = P().form(P().drug(rx.id), 'depot');
@@ -402,20 +422,29 @@
     SE_KEYS.forEach((k) => (load[k] = 0));
     const t = P().tags(pt);
     pt.rx.forEach((rx) => {
-      if (rx.kind === 'int') return;
+      if (rx.kind === 'int' || rx.held) return;
       const d = P().drug(rx.id);
       if (!d) return;
       let f;
       if (rx.prn) f = rx.usedToday ? 0.7 : 0;
       else f = P().doseFactor(rx, pt) * P().levelMult(pt, d);
       if ((pt.intolerant || []).indexOf(rx.id) >= 0) f *= 1.8; // пациент уже плохо переносил этот препарат
+      if (pt.mode === 'amb' && P().oral(rx.route) && !rx.prn) f *= U.clamp(0.25 + 0.75 * adhOf(pt, d), 0, 1);
       f = U.clamp(f, 0, 2.5);
-      const on = s.day - rx.since;
+      const on = (s.day - rx.since) * W.speed(pt);
+      const tm = P().oral(rx.route) ? rx.time : null;
       SE_KEYS.forEach((k) => {
         let v = (d.se && d.se[k]) || 0;
         if (!v) return;
         if (k === 'activation') v *= on <= 12 ? 1 : 0.2;
+        if (k === 'serotonergic') v *= on <= 10 ? 1 : 0.35; // тошнота первых дней проходит
         if (k === 'sedation' || k === 'orthostatic') v *= on <= 7 ? 1 : 0.75; // привыкание
+        // время приёма: седативное на ночь меньше мешает днём, активирующее вечером мешает уснуть
+        if (tm === 'pm' && k === 'sedation') v *= 0.65;
+        if (tm === 'am' && k === 'sedation' && (d.se.sedation || 0) >= 2) v *= 1.2;
+        if (tm === 'pm' && k === 'orthostatic') v *= 0.85;
+        if (tm === 'pm' && k === 'activation') v *= 1.35;
+        if (tm === 'am' && k === 'activation') v *= 0.85;
         if (k === 'sedation' && d.cls === 'bzd' && on > 30) v *= 0.55;
         // при отмене алкоголя гиперактивация и перекрёстная толерантность «съедают» седацию — пока отмена тяжёлая
         if (k === 'sedation' && d.cls === 'bzd' && t.alcohol) v *= U.clamp(1.2 - pt.sev / 80, 0.25, 1);
@@ -430,6 +459,7 @@
       load.eps *= 1.2;
     }
     if (t.young && pt.sex === 'm') load.eps *= 1.2;
+    if (pt.flags && pt.flags.lifestyle && s.day - pt.flags.lifestyle < 30) load.weight *= 0.75; // питание и движение
     if (t.eps_sensitive) {
       load.eps *= 1.5;
       load.nms *= 3;
@@ -441,13 +471,18 @@
     if (has((r, d) => d && d.cls === 'bzd')) load.akathisia *= 0.6;
     Object.keys(SE_RATE).forEach((k) => {
       const cur = pt.sx[k] || 0;
-      pt.sx[k] = Math.round((cur + (load[k] - cur) * SE_RATE[k]) * 100) / 100;
+      pt.sx[k] = Math.round((cur + (load[k] - cur) * rateOf(pt, SE_RATE[k])) * 100) / 100;
     });
     pt.load = load;
   }
 
+  /** На амбулаторном приёме игровой день — несколько дней лечения: показатели меняются быстрее за тик. */
+  function rateOf(pt, r) {
+    return pt.mode === 'amb' ? 1 - Math.pow(1 - r, W.speed(pt)) : r;
+  }
   function updLabs(s, pt) {
     const L = pt.lab;
+    const rt = (r) => rateOf(pt, r);
     const b = pt.base;
     const load = pt.load || {};
     const t = P().tags(pt);
@@ -460,44 +495,50 @@
       qt += d.se.qt * 9 * U.clamp(P().doseFactor(rx, pt) * P().levelMult(pt, d), 0, 2.5);
     });
     if (L.na < 130) qt += 6;
-    L.qtc = Math.round(L.qtc + (qt - L.qtc) * 0.6);
-    // масса тела и метаболизм
-    L.weight = Math.round((L.weight + 0.045 * (load.weight || 0)) * 10) / 10;
-    L.glucose = U.clamp(L.glucose + 0.004 * (load.metabolic || 0) - 0.001, b.glucose - 0.3, 14);
-    L.ldl = U.clamp(L.ldl + 0.003 * (load.metabolic || 0), 1, 8);
-    L.tg = U.clamp(L.tg + 0.006 * (load.metabolic || 0), 0.4, 8);
+    L.qtc = Math.round(L.qtc + (qt - L.qtc) * rt(0.6));
+    // масса тела и метаболизм (без нагрузки препаратами вес понемногу уходит, если пациент следит за питанием)
+    const sp = W.speed(pt);
+    const lose = pt.flags && pt.flags.lifestyle && s.day - pt.flags.lifestyle < 30 && L.weight > b.weight ? 0.03 : 0;
+    L.weight = Math.round((L.weight + (0.045 * (load.weight || 0) - lose) * sp) * 10) / 10;
+    L.glucose = U.clamp(L.glucose + (0.004 * (load.metabolic || 0) - 0.001 - (lose ? 0.002 : 0)) * sp, Math.min(b.glucose, 4.6) - 0.3, 14);
+    L.ldl = U.clamp(L.ldl + 0.003 * (load.metabolic || 0) * sp - (lose ? 0.002 : 0), 1, 8);
+    L.tg = U.clamp(L.tg + 0.006 * (load.metabolic || 0) * sp - (lose ? 0.004 : 0), 0.4, 8);
     // пролактин
-    L.prl += (b.prl + 22 * (load.prolactin || 0) - L.prl) * 0.35;
+    L.prl += (b.prl + 22 * (load.prolactin || 0) - L.prl) * rt(0.35);
     // АЛТ: при отмене алкоголя снижается
     let altT = b.alt + 14 * (load.hepatotox || 0);
     if (t.alcohol) altT = Math.max(28, b.alt * 0.55) + 14 * (load.hepatotox || 0);
-    L.alt += (altT - L.alt) * 0.2;
+    L.alt += (altT - L.alt) * rt(0.2);
     // натрий: СИАДГ на антидепрессантах и карбамазепине; риск — возраст, тиазиды, женский пол
     const rf = (t.elderly ? 2 : 1) * (t.thiazide ? 1.8 : 1) * (pt.sex === 'f' ? 1.2 : 1) * (t.hyponatremia_risk ? 1.3 : 1);
     const naT = b.na - Math.min(16, 3 * (load.hyponatremia || 0) * rf);
-    L.na = U.clamp(L.na + (naT - L.na) * 0.15, 116, 147);
+    L.na = U.clamp(L.na + (naT - L.na) * rt(0.15), 116, 147);
     // литий
     const li = pt.rx.find((r) => r.id === 'lithium' && !r.prn);
     if (li) {
-      const target = (li.dose / 1000) * 1.1 * (t.renal ? 1.4 : 1) * (t.elderly ? 1.2 : 1) * (t.acei || t.arb ? 1.3 : 1) * (t.nsaid ? 1.3 : 1) * (t.thiazide ? 1.5 : 1) * (pt.flags.dehydrated ? 1.3 : 1) * (pt.adherence < 0.6 ? 0.5 : 1);
-      L.li += (target - L.li) * 0.35;
-      L.liSteady = s.day - (li.changed || li.since) >= 5;
+      const la = adhOf(pt, P().drug('lithium'));
+      const target = li.held ? 0 : (li.dose / 1000) * 1.1 * (t.renal ? 1.4 : 1) * (t.elderly ? 1.2 : 1) * (t.acei || t.arb ? 1.3 : 1) * (t.nsaid ? 1.3 : 1) * (t.thiazide ? 1.5 : 1) * (pt.flags.dehydrated ? 1.3 : 1) * (la < 0.2 ? 0.05 : la < 0.6 ? 0.5 : 1);
+      L.li += (target - L.li) * rt(0.35);
+      L.liSteady = (s.day - (li.changed || li.since)) * sp >= 5;
       L.tsh += 0.02;
     } else {
       L.li *= 0.4;
       L.liSteady = false;
     }
     const vp = pt.rx.find((r) => r.id === 'valproate' && !r.prn);
-    if (vp) L.vpa += (vp.dose * 0.07 * P().levelMult(pt, P().drug('valproate')) * pt.adherence - L.vpa) * 0.4;
+    if (vp) L.vpa += (vp.dose * 0.07 * P().levelMult(pt, P().drug('valproate')) * adhOf(pt, P().drug('valproate')) - L.vpa) * rt(0.4);
     else L.vpa *= 0.4;
     // нейтрофилы
     if (pt.flags.agranDay && s.day >= pt.flags.agranDay && pt.rx.some((r) => r.id === 'clozapine')) L.anc = Math.max(0.2, L.anc - 0.9);
-    else L.anc += (b.anc - 0.25 * (load.agranulocytosis || 0) - L.anc) * 0.3;
+    else L.anc += (b.anc - 0.25 * (load.agranulocytosis || 0) - L.anc) * rt(0.3);
     // КФК: ЗНС, инъекции, фиксация
     L.ck += ((pt.flags.nms ? 6200 : 110 + (pt.flags.restraint === s.day - 1 ? 380 : 0)) - L.ck) * 0.5;
     // отказ от курения в отделении поднимает уровень субстратов CYP1A2 (через пару дней)
     if (t.smoker && !pt.quitSmoking && s.day - pt.admitDay >= 3 && pt.flags.noSmoking) pt.quitSmoking = true;
   }
+
+  /* ---------- Общие для отделения и амбулаторного приёма части модели ---------- */
+  W.sim = { efficacy, sideEffects, updLabs, seStress, cls, grp };
 
   /* ---------- Обследования ---------- */
   W.order = function (s, pt, test) {
@@ -1590,9 +1631,14 @@
     const ex = pt.rx.find((r) => r.id === o.id && r.route === o.route);
     if (ex) return W.setDose(s, pt, pt.rx.indexOf(ex), o.dose);
     const rx = { id: o.id, kind: 'drug', route: o.route, dose: o.dose, since: s.day, changed: s.day, prn: !!(P().form(d, o.route).prn) };
+    const tm = o.time !== undefined ? o.time : P().defaultTime(d, o.route);
+    if (tm && P().oral(o.route) && !rx.prn) rx.time = tm;
+    if (o.route === 'depot') rx.lastInj = s.day;
     pt.rx.push(rx);
-    if (P().line(pt, d).line === 'first') pt.flags.firstLine = true;
-    log(s, pt, 'Назначено: ' + d.name.toLowerCase() + ' ' + P().fmtDose(o.dose) + (rx.prn ? ' по требованию' : P().unit(d, o.route) === 'мг/сут' ? '/сут' : '') + ' (' + P().ROUTES[o.route] + ').');
+    const ln = P().line(pt, d).line;
+    if (ln === 'first') pt.flags.firstLine = true;
+    else if (ln === 'second') pt.flags.secondLine = true;
+    log(s, pt, 'Назначено: ' + d.name.toLowerCase() + ' ' + P().fmtDose(o.dose) + (rx.prn ? ' по требованию' : P().unit(d, o.route) === 'мг/сут' ? '/сут' : '') + ' (' + P().ROUTES[o.route] + (rx.time ? ', ' + P().TIMES[rx.time] : '') + ').');
     if (o.id === 'lamotrigine' && o.dose > 25) pt.flags.lamoFast = true;
     return rec(s, pt, P().review(s, pt, rx, 'add'));
   };
@@ -1604,12 +1650,15 @@
     const prev = rx.dose;
     if (dose === prev) return [];
     const kind = dose > prev ? 'up' : 'down';
-    // резкое снижение бензодиазепина после длительного приёма
-    if (d.cls === 'bzd' && s.day - rx.since > 21 && dose < prev * 0.5) {
+    // резкое снижение бензодиазепина (или Z-гипнотика) после длительного приёма
+    if ((d.cls === 'bzd' || d.cls === 'z') && (s.day - rx.since) * W.speed(pt) > 21 && dose < prev * 0.5) {
       pt.flags.bzdCut = s.day;
       pt.flags.bzdPrev = prev;
     }
     rx.dose = dose;
+    if (rx.held) log(s, pt, d.name + ': приём возобновлён.');
+    rx.held = false; // приостановленный препарат возобновляют в новой дозе
+    rx.heldDay = null;
     if (kind === 'up') rx.upCount = (rx.upCount || 0) + 1;
     if (rx.home && kind === 'up' && !rx.upSince) rx.upSince = s.day;
     if (rx.home && dose <= rx.baseDose) rx.upSince = null;
@@ -1618,6 +1667,16 @@
     if (rx.id === 'lamotrigine' && kind === 'up' && dose - prev > 25) pt.flags.lamoFast = true;
     log(s, pt, d.name + ': ' + P().fmtDose(prev) + ' → ' + P().fmtDose(dose) + '.');
     return rec(s, pt, msgs);
+  };
+
+  /** Время приёма таблеток: утром, на ночь или в несколько приёмов. */
+  W.setTime = function (s, pt, idx, time) {
+    const rx = pt.rx[idx];
+    if (!rx || rx.kind === 'int' || !P().oral(rx.route) || rx.prn || rx.time === time || !P().TIMES[time]) return [];
+    const prev = rx.time;
+    rx.time = time;
+    log(s, pt, P().drug(rx.id).name + ': приём ' + (prev ? P().TIMES[prev] + ' → ' : '') + P().TIMES[time] + '.');
+    return rec(s, pt, P().review(s, pt, rx, 'time'));
   };
 
   W.stepDose = function (s, pt, idx, dir) {
@@ -1661,7 +1720,7 @@
     const msgs = P().review(s, pt, rx, 'stop');
     const d = rx.kind === 'int' ? null : P().drug(rx.id);
     const lowStep = d ? (P().form(d, rx.route).steps || [rx.dose])[0] : 0;
-    if (d && d.cls === 'bzd' && s.day - rx.since > 21 && rx.dose > lowStep * 2 + 0.001 && !pt.rx.some((o) => o !== rx && cls(o) === 'bzd')) {
+    if (d && (d.cls === 'bzd' || d.cls === 'z') && (s.day - rx.since) * W.speed(pt) > 21 && rx.dose > lowStep * 2 + 0.001 && !pt.rx.some((o) => o !== rx && cls(o) === d.cls)) {
       pt.flags.bzdCut = s.day;
       pt.flags.bzdPrev = rx.dose;
     }

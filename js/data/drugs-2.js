@@ -827,6 +827,7 @@
       kind: 'observation',
       eff: {},
       onset: {},
+      where: ['ward'],
       note: 'Постоянное наблюдение персонала, палата у поста, без опасных предметов. Снижает риск самоповреждения и агрессии, но ограничивает свободу — показания пересматривают ежедневно.',
     },
     {
@@ -835,6 +836,7 @@
       kind: 'ect',
       eff: { depression: 0.85, bipdep: 0.75, mania: 0.6, psychosis: 0.4 },
       onset: { depression: 10, bipdep: 10, mania: 7, psychosis: 14 },
+      where: ['ward'],
       note: 'Под наркозом и миорелаксацией, 2–3 раза в неделю. Нужны письменное согласие, осмотр терапевта и анестезиолога.',
     },
     {
@@ -843,14 +845,15 @@
       kind: 'somatic',
       eff: { withdrawal: 0.15 },
       onset: { withdrawal: 0 },
+      where: ['ward'],
       note: 'Коррекция обезвоживания и электролитов. При алкогольной болезни глюкозу вводят только после тиамина.',
     },
     {
       id: 'dementia_care',
       name: 'Немедикаментозный уход при деменции',
       kind: 'somatic',
-      eff: { bpsd: 0.4 },
-      onset: { bpsd: 4 },
+      eff: { bpsd: 0.4, cognition: 0.12 },
+      onset: { bpsd: 4, cognition: 14 },
       note: 'Режим дня, свет днём и ночник ночью, ориентиры (часы, календарь), очки и слуховой аппарат, лечение боли и запоров, спокойное сопровождение, участие родственников.',
     },
     {
@@ -860,6 +863,23 @@
       eff: { psychosis: 0.05, craving: 0.2, depression: 0.1 },
       onset: { psychosis: 10, craving: 10, depression: 10 },
       note: 'Занятия в группах, трудотерапия, тренинг социальных навыков.',
+    },
+    {
+      id: 'psychotherapy_cbti',
+      name: 'Когнитивно-поведенческая терапия инсомнии',
+      kind: 'psychotherapy',
+      eff: { sleep: 0.65, anxiety: 0.1, depression: 0.1 },
+      onset: { sleep: 14, anxiety: 14, depression: 14 },
+      note: 'Ограничение времени в постели, контроль стимулов, работа с тревожными мыслями о сне, дневник сна. 4–8 встреч.',
+    },
+    {
+      id: 'day_hospital',
+      name: 'Дневной стационар',
+      kind: 'dayhosp',
+      where: ['amb'],
+      eff: { depression: 0.15, psychosis: 0.12, anxiety: 0.15, bipdep: 0.12, mania: 0.1, craving: 0.2, ocd: 0.1, ptsd: 0.1 },
+      onset: { depression: 5, psychosis: 5, anxiety: 5, bipdep: 5, mania: 5, craving: 5, ocd: 5, ptsd: 5 },
+      note: 'Лечение днём под присмотром врача и медсестры, ночью дома: таблетки под контролем, групповые занятия. Курс около месяца.',
     }
   );
 })((window.A = window.A || {}));

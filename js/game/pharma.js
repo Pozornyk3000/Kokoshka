@@ -23,6 +23,38 @@
     delirium_tremens: { name: 'Алкогольный делирий', domains: ['withdrawal'], topic: 'addiction', K: 0.22, special: 'dt', discharge: 15, los: [6, 16] },
     dementia_bpsd: { name: 'Деменция с нарушениями поведения', domains: ['bpsd'], topic: 'organic', K: 0.08, drift: 0.2, discharge: 35, los: [10, 30] },
     bpd_crisis: { name: 'Кризис при пограничном расстройстве личности', domains: ['impulsivity'], topic: 'personality', K: 0.08, drift: -2.5, discharge: 40, los: [3, 10] },
+    // Амбулаторные группы: длительное ведение
+    bipolar_maint: { name: 'Биполярное расстройство, поддерживающая терапия', domains: ['mania', 'bipdep'], topic: 'affective', K: 0.07, drift: 0.35, discharge: 25, los: [20, 60] },
+    alcohol_dependence: { name: 'Синдром зависимости от алкоголя', domains: ['craving'], topic: 'addiction', K: 0.06, drift: 0.3, discharge: 25, los: [20, 60] },
+    insomnia: { name: 'Хроническая инсомния', domains: ['sleep'], topic: 'neurotic', K: 0.07, drift: 0.03, discharge: 25, los: [14, 50] },
+    dementia_mild: { name: 'Деменция при болезни Альцгеймера', domains: ['cognition'], topic: 'organic', K: 0.012, drift: 0.12, discharge: 45, los: [20, 60] },
+  };
+  /** Шкалы для амбулаторного приёма: балл из тяжести состояния (0–100). rev — чем меньше, тем хуже (MMSE). */
+  P.SCALES = {
+    depression: { name: 'PHQ-9', max: 27, k: 0.27, cut: 'меньше 5 — ремиссия, 10 и больше — клинически значимая депрессия' },
+    bipolar_depression: { name: 'PHQ-9', max: 27, k: 0.27, cut: 'меньше 5 — ремиссия' },
+    depression_psychotic: { name: 'PHQ-9', max: 27, k: 0.27, cut: 'меньше 5 — ремиссия' },
+    bipolar_maint: { name: 'YMRS', max: 60, k: 0.5, cut: 'до 12 — эутимия, 20 и больше — мания' },
+    mania: { name: 'YMRS', max: 60, k: 0.55, cut: 'до 12 — эутимия' },
+    schizophrenia: { name: 'PANSS, позитивная шкала', min: 7, max: 49, k: 0.42, cut: 'до 14 — ремиссия по позитивным симптомам' },
+    gad: { name: 'GAD-7', max: 21, k: 0.21, cut: 'меньше 5 — минимальная тревога, 10 и больше — клинически значимая' },
+    panic: { name: 'PDSS', max: 28, k: 0.28, cut: 'до 5 — ремиссия панического расстройства' },
+    ocd: { name: 'Y-BOCS', max: 40, k: 0.4, cut: 'до 12 — ремиссия, снижение на 35% — ответ' },
+    ptsd: { name: 'PCL-5', max: 80, k: 0.8, cut: 'меньше 31 — ниже порога ПТСР' },
+    alcohol_dependence: { name: 'PACS (влечение к алкоголю)', max: 30, k: 0.3, cut: 'чем ниже, тем слабее влечение' },
+    insomnia: { name: 'ISI (индекс тяжести инсомнии)', max: 28, k: 0.28, cut: 'до 7 — нет клинической инсомнии, 15 и больше — выраженная' },
+    dementia_mild: { name: 'MMSE', max: 30, k: 0.2, rev: true, cut: '24–30 — норма, 20–23 — лёгкая деменция, 10–19 — умеренная' },
+    dementia_bpsd: { name: 'NPI (поведенческие нарушения)', max: 144, k: 0.9, cut: 'чем ниже, тем меньше нарушений' },
+    bpd_crisis: { name: 'BSL-23', max: 92, k: 0.8, cut: 'чем ниже, тем легче' },
+  };
+  /** Балл по шкале группы: { name, value, max, rev }. */
+  P.scale = function (pt, sev) {
+    const sc = P.SCALES[pt.group];
+    if (!sc) return null;
+    const v = sev == null ? pt.sev : sev;
+    const min = sc.min || 0;
+    const raw = sc.rev ? sc.max - v * sc.k : min + v * sc.k;
+    return { name: sc.name, value: Math.round(U.clamp(raw, min, sc.max)), max: sc.max, min, rev: !!sc.rev, cut: sc.cut };
   };
   P.group = (pt) => P.GROUPS[pt.group] || P.GROUPS.depression;
 
@@ -79,6 +111,35 @@
     d.interventions.forEach((x) => (d.intById[x.id] = x));
     d.wardById = {};
     d.wardPatients.forEach((x) => (d.wardById[x.id] = x));
+    d.ambPatients = d.ambPatients || [];
+    d.ambById = {};
+    d.ambPatients.forEach((x) => (d.ambById[x.id] = x));
+    // Плановый контроль при длительной амбулаторной терапии (по инструкциям и КР; дни — «биологические»)
+    d.drugs.forEach((x) => {
+      const add = (list) => {
+        x.monitor = (x.monitor || []).filter((m) => m.when !== 'period').concat(list);
+      };
+      const per = P.PERIODIC[x.id] || (x.group === 'antipsychotic' && x.cls !== 'fga_high' && x.cls !== 'fga_low' ? P.PERIODIC._sga : null);
+      if (per) add(per);
+    });
+  };
+  P.PERIODIC = {
+    lithium: [
+      { test: 'tsh', when: 'period', every: 180, note: 'ТТГ раз в 6–12 месяцев' },
+      { test: 'bio', when: 'period', every: 180, note: 'креатинин, СКФ и натрий раз в 6–12 месяцев' },
+    ],
+    valproate: [
+      { test: 'bio', when: 'period', every: 180, note: 'печёночные ферменты раз в 6 месяцев' },
+      { test: 'cbc', when: 'period', every: 180, note: 'тромбоциты раз в 6 месяцев' },
+    ],
+    carbamazepine: [
+      { test: 'cbc', when: 'period', every: 180, note: 'общий анализ крови раз в 6 месяцев' },
+      { test: 'bio', when: 'period', every: 180, note: 'натрий и печёночные ферменты раз в 6 месяцев' },
+    ],
+    _sga: [
+      { test: 'glucose', when: 'period', every: 180, note: 'глюкоза раз в 6–12 месяцев' },
+      { test: 'lipids', when: 'period', every: 365, note: 'липидный профиль раз в год' },
+    ],
   };
   P.drug = (id) => D().drugById && D().drugById[id];
   P.int = (id) => D().intById && D().intById[id];
@@ -131,11 +192,13 @@
   /** Ссылка на КР; для записей gen — пометка «общий принцип». */
   P.cite = function (g, entry) {
     if (entry && entry.gen) return P.GEN;
+    if (g && g.nokr) return P.GEN;
     if (!g || !g.title) return '';
     return 'КР «' + (g.short || g.title) + '»' + (g.year ? ' (' + g.year + ')' : '');
   };
   P.citeFull = function (g) {
     if (!g || !g.title) return '';
+    if (g.nokr) return g.title + ' — ' + P.GEN + (g.note ? ' (' + g.note + ')' : '');
     return 'КР «' + g.title + '»' + (g.year ? ', ' + g.year : '') + (g.id ? ', ID ' + g.id : '') + (g.by ? '. ' + g.by : '');
   };
   /** Стандарт относится к пациенту, только если совпадает код МКБ (745н — для F33, не для первого эпизода F32). */
@@ -194,7 +257,8 @@
     if (pt.lab && pt.lab.qtc >= 460) t.qt_long = true;
     if (pt.lab && pt.lab.egfr < 60) t.renal = true;
     if (pt.lab && pt.lab.alt >= 90) t.liver = true;
-    if (pt.group === 'bipolar_depression' || pt.group === 'mania') t.bipolar = true;
+    if (pt.age >= 65 && pt.group === 'dementia_mild') t.dementia_elderly = true;
+    if (pt.group === 'bipolar_depression' || pt.group === 'mania' || pt.group === 'bipolar_maint') t.bipolar = true;
     if (pt.group === 'alcohol_withdrawal' || pt.group === 'delirium_tremens') t.alcohol = true;
     if ((pt.risk && pt.risk.suicide >= 2) || pt.group === 'bpd_crisis') t.suicide_high = true;
     return t;
@@ -268,6 +332,41 @@
   };
   P.tagName = (t) => P.TAG_NAMES[t] || (P.drug(t) ? 'получает ' + P.drug(t).name.toLowerCase() : t);
 
+  /* ---------- Время приёма ---------- */
+  P.TIMES = { am: 'утром', pm: 'на ночь', split: '2–3 раза в день' };
+  /** Что советует инструкция и здравый смысл: седативные — на ночь, активирующие — утром. */
+  P.timeAdvice = function (drug) {
+    if (!drug) return null;
+    const label = (drug.forms || []).map((f) => f.label || '').join(' ');
+    const se = drug.se || {};
+    if (/на ночь/.test(label) || (se.sedation || 0) >= 2) return 'pm';
+    if ((se.activation || 0) >= 1 && (se.sedation || 0) < 1) return 'am';
+    return null;
+  };
+  /** Время приёма по умолчанию для нового назначения. */
+  P.defaultTime = function (drug, route) {
+    if (!P.oral(route)) return null;
+    const f = P.form(drug, route);
+    if (f.prn) return null;
+    const adv = P.timeAdvice(drug);
+    if (adv) return adv;
+    return (f.split || 1) > 1 ? 'split' : 'am';
+  };
+  /** Сколько раз в день пациент что-то принимает (для приверженности). */
+  P.intakes = function (pt) {
+    const times = {};
+    (pt.rx || []).forEach((r) => {
+      if (r.kind === 'int' || r.prn || !P.oral(r.route)) return;
+      const t = r.time || P.defaultTime(P.drug(r.id) || {}, r.route) || 'am';
+      if (t === 'split') {
+        times.am = 1;
+        times.pm = 1;
+        if ((P.form(P.drug(r.id), r.route).split || 1) >= 3) times.noon = 1;
+      } else times[t] = 1;
+    });
+    return Object.keys(times).length;
+  };
+
   /* ---------- Проверка назначения ---------- */
   const SERO_STRONG = ['clomipramine', 'fluoxetine', 'paroxetine', 'sertraline', 'escitalopram', 'citalopram', 'fluvoxamine', 'venlafaxine', 'duloxetine', 'vortioxetine'];
 
@@ -279,6 +378,14 @@
     const out = [];
     const item = P.item(rx);
     if (!item) return out;
+    if (kind === 'time') {
+      const adv = P.timeAdvice(item);
+      if (adv === 'pm' && rx.time === 'am') out.push({ lvl: 'info', text: item.name + ' вызывает сонливость — утром пациент будет вялым весь день; удобнее вечером или на ночь.' });
+      else if (adv === 'am' && rx.time === 'pm') out.push({ lvl: 'info', text: item.name + ' может бодрить: вечерний приём мешает уснуть — лучше утром.' });
+      else if (adv && rx.time === adv) out.push({ lvl: 'ok', text: item.name + ' — ' + P.TIMES[adv] + ': так меньше мешают побочные эффекты.' });
+      else if (rx.time !== 'split' && (P.form(item, rx.route).split || 1) > 1 && item.id === 'lithium') out.push({ lvl: 'info', text: 'Литий можно принимать один раз в день вечером — это не хуже и проще для приверженности; концентрацию тогда оценивают через 12 часов после приёма.' });
+      return out;
+    }
     const g = P.gl(pt);
     const cite = P.cite(g);
     const day = s.day - pt.admitDay;
@@ -343,8 +450,10 @@
         if (start && rx.dose > start * 1.6 && !urgentStart(pt, drug)) out.push({ lvl: rx.dose > start * 3 ? 'err' : 'warn', text: (rx.dose > start * 3 ? 'Опасно высокая стартовая доза. ' : 'Высокая стартовая доза. ') + 'Начните с ' + fmtDose(start) + ' и титруйте.' + (drug.id === 'lamotrigine' && tags.valproate ? ' С вальпроатом дозы ламотриджина вдвое ниже.' : '') });
       }
       special(s, pt, drug, rx).forEach((m) => out.push(m));
+      const adv = P.timeAdvice(drug);
+      if (adv && rx.time && rx.time !== adv && P.oral(rx.route) && !rx.prn) out.push({ lvl: 'info', text: drug.name + ' лучше принимать ' + P.TIMES[adv] + '.' });
       // 5. Полипрагмазия и сочетания классов
-      polypharmacy(pt, drug, rx).forEach((m) => out.push(m));
+      polypharmacy(s, pt, drug, rx).forEach((m) => out.push(m));
       // 6. Мониторинг
       const need = (drug.monitor || []).filter((m) => m.when === 'start' && monitorApplies(pt, m) && !P.recentTest(pt, m.test, 14));
       if (need.length) out.push({ lvl: 'info', text: 'Не забудьте: ' + U.list(need.map((m) => (P.TESTS[m.test] || { name: m.test }).name + (m.note ? ' (' + m.note.replace(/\.$/, '') + ')' : ''))) + '.' });
@@ -355,7 +464,7 @@
       const eMax = drug.elderlyMax || (r && r.max ? r.max * 0.6 : 0);
       if (eMax && tags.elderly && P.oral(rx.route) && rx.dose > eMax + 0.01 && drug.group !== 'dementia' && drug.group !== 'other') out.push({ lvl: 'warn', text: 'У пожилых дозы ниже: не больше ' + fmtDose(eMax) + ', титрация — медленнее.' });
       if (kind === 'up' && prev != null && drug.titration && drug.titration.maxUpPerDay) {
-        const days = Math.max(1, s.day - (rx.changed || rx.since));
+        const days = Math.max(1, daysOn(s, { since: rx.changed || rx.since }, pt));
         const allowed = drug.titration.maxUpPerDay * days;
         if (rx.dose - prev > allowed * 1.05) out.push({ lvl: 'warn', text: 'Слишком быстрая титрация. ' + (drug.titration.note || '') });
       }
@@ -385,7 +494,7 @@
       });
       cyp(pt, drug).forEach((m) => out.push(m));
     }
-    if (kind === 'down' && drug.cls === 'bzd' && prev && daysOn(s, rx) > 28) {
+    if (kind === 'down' && drug.cls === 'bzd' && prev && daysOn(s, rx, pt) > 28) {
       const cut = (prev - rx.dose) / prev;
       const since = s.day - (rx.lastDown || rx.since);
       const low = (P.form(drug, rx.route).steps || [rx.dose])[0];
@@ -396,13 +505,16 @@
       out.push({ lvl: 'info', text: 'Доза ниже терапевтической — эффект ослабнет.' });
     if (kind === 'stop') {
       const low = (P.form(drug, rx.route).steps || [rx.dose])[0];
-      if (drug.cls === 'bzd' && daysOn(s, rx) > 28 && !otherBzd(pt, rx) && rx.dose > low * 2 + 0.001)
+      if (drug.cls === 'bzd' && daysOn(s, rx, pt) > 28 && !otherBzd(pt, rx) && rx.dose > low * 2 + 0.001)
         out.push({ lvl: 'err', text: 'Резкая отмена бензодиазепина после длительного приёма — синдром отмены вплоть до судорог. Снижайте дозу на 10–25% каждые 1–2 недели.' });
-      else if (drug.cls === 'bzd' && daysOn(s, rx) > 28 && !otherBzd(pt, rx)) out.push({ lvl: 'ok', text: 'Последний шаг постепенной отмены бензодиазепина.' });
-      else if (drug.cls === 'bzd' && daysOn(s, rx) > 10) out.push({ lvl: 'info', text: 'Бензодиазепин после приёма дольше полутора недель лучше снижать постепенно.' });
-      if ((drug.cls === 'ssri' || drug.cls === 'snri') && (drug.id === 'paroxetine' || drug.id === 'venlafaxine') && daysOn(s, rx) > 14)
+      else if (drug.cls === 'bzd' && daysOn(s, rx, pt) > 28 && !otherBzd(pt, rx)) out.push({ lvl: 'ok', text: 'Последний шаг постепенной отмены бензодиазепина.' });
+      else if (drug.cls === 'bzd' && daysOn(s, rx, pt) > 10) out.push({ lvl: 'info', text: 'Бензодиазепин после приёма дольше полутора недель лучше снижать постепенно.' });
+      if (drug.cls === 'z' && daysOn(s, rx, pt) > 28 && rx.dose > low + 0.001)
+        out.push({ lvl: 'warn', text: 'Резкая отмена снотворного после долгого приёма — рикошетная бессонница и тревога. Снижайте дозу постепенно, параллельно — КПТ инсомнии.' });
+      else if (drug.cls === 'z' && daysOn(s, rx, pt) > 28) out.push({ lvl: 'ok', text: 'Последний шаг постепенной отмены снотворного.' });
+      if ((drug.cls === 'ssri' || drug.cls === 'snri') && (drug.id === 'paroxetine' || drug.id === 'venlafaxine') && daysOn(s, rx, pt) > 14)
         out.push({ lvl: 'info', text: 'Пароксетин и венлафаксин отменяют постепенно: выражен синдром отмены.' });
-      if (drug.id === 'clozapine' && daysOn(s, rx) > 7) out.push({ lvl: 'info', text: 'Резкая отмена клозапина — риск холинергического «отката» и быстрого рецидива психоза.' });
+      if (drug.id === 'clozapine' && daysOn(s, rx, pt) > 7) out.push({ lvl: 'info', text: 'Резкая отмена клозапина — риск холинергического «отката» и быстрого рецидива психоза.' });
     }
     return out;
   };
@@ -438,8 +550,9 @@
     const bzdIm = (drug.cls === 'bzd' && parenteral(rx)) || (pt.rx || []).some((o) => o !== rx && parenteral(o) && (P.drug(o.id) || {}).cls === 'bzd');
     if (clozOn && bzdIm) out.push({ lvl: 'err', text: 'Внутримышечные бензодиазепины с клозапином не сочетают — риск угнетения дыхания.', cite: 'КР «Шизофрения» (2024)' });
     // Сенсибилизирующая терапия — только после купирования абстиненции
-    if ((drug.id === 'disulfiram' || drug.id === 'cyanamide') && tags.alcohol) {
-      const acute = pt.sev > 25 || s.day - pt.admitDay < 3;
+    if ((drug.id === 'disulfiram' || drug.id === 'cyanamide') && (tags.alcohol || pt.group === 'alcohol_dependence')) {
+      // в отделении — после купирования отмены; на амбулаторном приёме — пока пациент трезв
+      const acute = pt.mode === 'amb' ? pt.sev >= 68 : pt.sev > 25 || s.day - pt.admitDay < 3;
       if (acute) out.push({ lvl: 'err', text: (drug.id === 'disulfiram' ? 'Дисульфирам' : 'Цианамид') + ' назначают только после купирования абстиненции и с письменного информированного согласия.', cite: 'КР «Синдром зависимости от алкоголя» (2024)' });
       else out.push({ lvl: 'info', text: 'Нужно письменное информированное согласие: пациент должен понимать, что будет при приёме алкоголя.' });
     }
@@ -464,8 +577,9 @@
   function otherBzd(pt, rx) {
     return (pt.rx || []).some((o) => o !== rx && o.kind !== 'int' && (P.drug(o.id) || {}).cls === 'bzd');
   }
-  function daysOn(s, rx) {
-    return s.day - rx.since;
+  /** Сколько дней пациент принимает препарат (на амбулаторном приёме — дни лечения, а не игровые). */
+  function daysOn(s, rx, pt) {
+    return (s.day - rx.since) * (pt && pt.mode === 'amb' && A.ward ? A.ward.speed(pt) : 1);
   }
   function cap(t) {
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
@@ -481,30 +595,42 @@
     return t.charAt(0).toLowerCase() + t.slice(1);
   };
 
-  function polypharmacy(pt, drug, rx) {
+  function polypharmacy(s, pt, drug, rx) {
     const out = [];
     const others = (pt.rx || []).filter((o) => o !== rx && o.kind !== 'int').map((o) => ({ o, d: P.drug(o.id) })).filter((x) => x.d);
     const ap = (d) => d.group === 'antipsychotic';
     const ad = (d) => d.group === 'antidepressant';
+    // перекрёстная смена: прежний препарат той же группы пациент принимает давно
+    const old = (x) => !x.o.prn && (x.o.pre || x.o.home || daysOn(s, x.o, pt) > 28);
+    const XT = 'Перекрёстная смена: новый препарат добавляют, а прежний за 2–4 недели снижают до отмены. Две полные дозы надолго не оставляйте.';
     if (ap(drug) && rx.route !== 'im') {
       const apOthers = others.filter((x) => ap(x.d) && x.o.route !== 'im' && !x.o.prn && !kin(x.d.id, drug.id));
       if (apOthers.length) {
         const clozAug = drug.id === 'clozapine' || apOthers.some((x) => x.d.id === 'clozapine');
-        out.push({ lvl: clozAug ? 'info' : 'warn', text: clozAug ? 'Комбинация с клозапином допустима только при частичном ответе на клозапин.' : 'Два антипсихотика одновременно — рекомендации требуют монотерапии. Замените, а не добавляйте.' });
+        const sw = !clozAug && apOthers.every(old);
+        out.push({ lvl: clozAug || sw ? 'info' : 'warn', text: clozAug ? 'Комбинация с клозапином допустима только при частичном ответе на клозапин.' : sw ? XT : 'Два антипсихотика одновременно — рекомендации требуют монотерапии. Замените, а не добавляйте.' });
       }
     }
-    if (ad(drug) && others.some((x) => ad(x.d) && x.d.id !== drug.id)) out.push({ lvl: 'warn', text: 'Два антидепрессанта сразу — без явных показаний это полипрагмазия.' });
+    const adOthers = others.filter((x) => ad(x.d) && x.d.id !== drug.id);
+    const adSwitch = adOthers.length > 0 && adOthers.every(old);
+    if (ad(drug) && adOthers.length) out.push({ lvl: adSwitch ? 'info' : 'warn', text: adSwitch ? XT : 'Два антидепрессанта сразу — без явных показаний это полипрагмазия.' });
     if (drug.group === 'antidepressant' && (pt.group === 'bipolar_depression' || pt.group === 'mania') && !others.some((x) => x.d.group === 'moodstab' || (x.d.group === 'antipsychotic' && (x.d.eff.mania || 0) >= 0.5)))
       out.push({ lvl: 'err', text: 'Антидепрессант без нормотимика при биполярном расстройстве — риск инверсии в манию.' });
     if (drug.group === 'corrector' && drug.cls === 'anticholinergic' && (pt.sx.eps || 0) < 0.8)
       out.push({ lvl: 'warn', text: 'Корректор «на всякий случай» не назначают: только при появлении экстрапирамидных расстройств.' });
     if (drug.cls === 'bzd' && ['dementia_bpsd', 'bpd_crisis'].indexOf(pt.group) >= 0) out.push({ lvl: 'warn', text: 'Бензодиазепины здесь опасны: растормаживание, падения, зависимость.' });
+    const sedGaba = (d) => d.cls === 'bzd' || d.cls === 'z';
+    if (sedGaba(drug) && !rx.prn && rx.route !== 'im' && others.some((x) => sedGaba(x.d) && !x.o.prn && x.o.route !== 'im' && x.d.id !== drug.id))
+      out.push({ lvl: 'warn', text: 'Два препарата одного действия — бензодиазепин или Z-гипнотик уже назначен: седация суммируется, растут риск падений и зависимости. Замените, а не добавляйте.' });
     // серотонинергическая нагрузка
     if ((drug.flags || []).indexOf('serotonergic') >= 0) {
       const sero = others.filter((x) => (x.d.flags || []).indexOf('serotonergic') >= 0);
       const t = P.tags(pt);
-      if (sero.length && (SERO_STRONG.indexOf(drug.id) >= 0 || sero.some((x) => SERO_STRONG.indexOf(x.d.id) >= 0)))
-        out.push({ lvl: 'warn', text: 'Два серотонинергических препарата — риск серотонинового синдрома.' });
+      if (sero.length && (SERO_STRONG.indexOf(drug.id) >= 0 || sero.some((x) => SERO_STRONG.indexOf(x.d.id) >= 0))) {
+        // при смене антидепрессанта прежний сначала снижают до минимальной дозы
+        const low = adSwitch && sero.every((x) => P.doseFactor(x.o, pt) <= 1.01);
+        out.push(low ? { lvl: 'info', text: 'При перекрёстной смене следите за признаками серотонинового синдрома: тремор, потливость, диарея, возбуждение.' } : { lvl: 'warn', text: 'Два серотонинергических препарата — риск серотонинового синдрома.' + (adSwitch ? ' При смене сначала снизьте прежний антидепрессант до минимальной дозы.' : '') });
+      }
       if (t.tramadol || t.triptan) out.push({ lvl: 'warn', text: 'Пациент принимает ' + (t.tramadol ? 'трамадол' : 'триптаны') + ' — риск серотонинового синдрома.' });
     }
     return out;
@@ -598,23 +724,45 @@
       if (out.some((x) => x.test === test)) return;
       out.push({ test, why, overdue: !!overdue });
     };
+    // На амбулаторном приёме время между визитами «сжато»: считаем в днях лечения
+    const amb = pt.mode === 'amb';
+    const sp = amb && A.ward ? A.ward.speed(pt) : 1;
+    const bio = (n) => n * sp;
     (pt.rx || []).forEach((rx) => {
       if (rx.kind === 'int' || rx.prn) return; // «по требованию» — без планового мониторинга
       const d = P.drug(rx.id);
       if (!d) return;
-      const on = s.day - rx.since;
+      const on = bio(s.day - rx.since);
       (d.monitor || []).forEach((m) => {
         if (!monitorApplies(pt, m)) return;
         const last = lastTestDay(pt, m.test);
-        if (m.when === 'start' && !(last >= rx.since - 14)) add(m.test, d.name + ': ' + (m.note || 'контроль в начале терапии'), on > 3);
+        const sinceLast = bio(s.day - last);
+        if (m.when === 'start') {
+          if (amb && rx.pre) return; // терапия начата до нас — важен плановый контроль
+          if (!(last >= rx.since - 14)) add(m.test, d.name + ': ' + (m.note || 'контроль в начале терапии'), on > 3);
+        }
         if (m.when === 'week') {
+          // в амбулатории со временем реже: первые 18 недель — по графику, затем раз в месяц, после года — раз в 3 месяца
+          const every = !amb ? 7 : on > 365 && d.id !== 'clozapine' ? 90 : on > 126 ? 28 : 7;
           const ref = last >= rx.since - 3 ? last : rx.since;
-          if (s.day - ref >= 7 && on >= 6) add(m.test, d.name + ': ' + (m.note || 'еженедельный контроль'), s.day - ref > 10);
+          const since = bio(s.day - ref);
+          const why = every === 7 ? m.note || 'еженедельный контроль' : (P.TESTS[m.test] || { name: m.test }).name + (every === 28 ? ' раз в месяц' : ' раз в 3 месяца') + ' при длительном приёме';
+          if (since >= every && on >= 6) add(m.test, d.name + ': ' + why, since > every * 1.5);
         }
         if (m.when === 'level') {
           const ch = rx.changed || rx.since;
-          const ok = last >= ch + 4 && s.day - last < 8;
-          if (!ok && s.day - ch >= 5) add(m.test, d.name + ': ' + (m.note || 'контроль концентрации'), s.day - ch > 9 && !(last >= ch + 4) || s.day - last > 11);
+          const sinceCh = bio(s.day - ch);
+          if (amb && sinceCh > 60) {
+            // доза давно не менялась: плановая концентрация раз в 3–6 месяцев
+            if (sinceLast >= 120) add(m.test, d.name + ': плановый контроль концентрации — раз в 3–6 месяцев', sinceLast > 180);
+          } else {
+            const after = Math.ceil(4 / sp);
+            const ok = last >= ch + after && sinceLast < 8;
+            if (!ok && sinceCh >= 5) add(m.test, d.name + ': ' + (m.note || 'контроль концентрации'), (sinceCh > 9 && !(last >= ch + after)) || sinceLast > 11);
+          }
+        }
+        if (m.when === 'period' && amb && on >= 30) {
+          if (sinceLast >= m.every) add(m.test, d.name + ': ' + m.note, sinceLast > m.every * 1.5);
         }
       });
     });

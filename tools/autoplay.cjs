@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Автоигрок: проходит игру через интерфейс в headless Chromium и ловит ошибки.
-   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart] [--mode full|doctor]
+   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart] [--mode full|doctor] [--job pnd|hospital|private|uni]
    Внутри приложения Android (отладочная сборка на устройстве или эмуляторе, подключённом через adb):
    node tools/autoplay.cjs - 300 --android io.github.pozornyk3000.anamnez --smart
    К уже запущенному Chromium по DevTools: --cdp http://127.0.0.1:9222 */
@@ -119,7 +119,7 @@ const cdp = flag('--cdp', null) || androidPkg;
       const act = s.activity;
       const step = act ? act.steps[act.i] : null;
       const wardView = (p) => (p.summary ? 'summary' : p.sheet ? 'sheet' + (p.sheet.id ? '-drug' : '') : p.open ? 'chart-' + p.tab : 'list');
-      return { day: s.day, slot: s.slot, money: s.money, energy: s.energy, stress: s.stress, health: s.health, phase: s.phase, type: step ? step.type : 'hub', stage: step && step.p ? step.p.stage || (step.type === 'ward' ? wardView(step.p) : '') : '', ended: s.ended };
+      return { day: s.day, slot: s.slot, money: s.money, energy: s.energy, stress: s.stress, health: s.health, phase: s.phase, type: step ? step.type : 'hub', stage: step && step.p ? step.p.stage || (step.type === 'ward' || step.type === 'amb' ? wardView(step.p) : '') : '', ended: s.ended };
     });
     if (info.none) {
       errors.push('state is null at step ' + i);
@@ -277,6 +277,125 @@ const cdp = flag('--cdp', null) || androidPkg;
       }, smart);
       if (wa) continue;
     }
+    // Амбулаторный приём: звонки, визиты (диагноз, беседа, назначения, время приёма, анализы), следующий визит
+    if (info.type === 'amb') {
+      const smart = argv.includes('--smart');
+      const aa = await page.evaluate((smart) => {
+        const A = window.A;
+        const s = A.state;
+        const step = s.activity.steps[s.activity.i];
+        const p = step.p;
+        if (!p) return null;
+        const cl = (sel) => {
+          const b = Array.from(document.querySelectorAll(sel)).find((x) => x.getAttribute('aria-disabled') !== 'true');
+          if (b) {
+            b.click();
+            return true;
+          }
+          return false;
+        };
+        const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const M = A.clinic;
+        const P = A.pharma;
+        window.__am = window.__am && window.__am.day === s.day ? window.__am : { day: s.day, acts: {}, skip: {} };
+        if (p.summary) return cl('[data-act="am-sum-close"]') ? 'am-sum-close' : null;
+        if (p.sheet) {
+          if (p.sheet.id) {
+            if (Math.random() < 0.3 && cl('[data-act="wd-stime"]')) return 'wd-stime';
+            return cl('[data-act="wd-sok"]') ? 'wd-sok' : cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+          }
+          if (p.sheet.group === 'int') return cl('[data-act="wd-sint"]') ? 'wd-sint' : cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+          const pt = M.byUid(s, p.open);
+          let pickId = null;
+          if (smart && pt) {
+            const g = P.gl(pt);
+            const ph = g && g.phases && (g.phases[P.phase(pt)] || g.phases.acute);
+            const first = ((ph && ph.first) || []).map((e) => (typeof e === 'string' ? { id: e } : e));
+            const cands = A.data.drugs.filter((d) => d.group === p.sheet.group && first.some((e) => (e.id ? e.id === d.id : e.cls ? e.cls === d.cls : e.group === d.group)));
+            if (cands.length) pickId = rnd(cands).id;
+          }
+          if (pickId) return cl('[data-act="wd-sdrug"][data-arg="' + pickId + '"]') ? 'wd-sdrug-smart' : null;
+          const opts = Array.from(document.querySelectorAll('[data-act="wd-sdrug"]'));
+          if (opts.length) {
+            rnd(opts).click();
+            return 'wd-sdrug';
+          }
+          return cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+        }
+        if (p.open) {
+          const pt = M.byUid(s, p.open);
+          if (!pt) return cl('[data-act="am-back"]') ? 'am-back' : null;
+          const did = (window.__am.acts[p.open] = window.__am.acts[p.open] || {});
+          if (pt.pending) {
+            const ev = M.EVENTS[pt.pending.k];
+            const best = ev.opts.findIndex((o) => (typeof o.ok === 'function' ? o.ok(s, pt) : o.ok) === true);
+            const i = smart && Math.random() < 0.85 ? best : Math.floor(Math.random() * ev.opts.length);
+            return cl('[data-act="am-decide"][data-arg="' + i + '"]') ? 'am-decide' : null;
+          }
+          const live = pt.vis && pt.vis.day === s.day && p.done[pt.uid] == null;
+          if (!live) {
+            window.__am.skip[pt.uid] = 1;
+            return cl('[data-act="am-back"]') ? 'am-back' : null;
+          }
+          if (document.querySelector('[data-act="am-dx"]')) {
+            const t = M.tpl(pt);
+            const ok = t.dxq.opts.findIndex((o) => o.ok === true);
+            const i = smart && Math.random() < 0.85 ? ok : Math.floor(Math.random() * t.dxq.opts.length);
+            return cl('[data-act="am-dx"][data-arg="' + i + '"]') ? 'am-dx' : null;
+          }
+          if (!did.tabs) {
+            did.tabs = 1;
+            return cl('[data-act="am-tab"][data-arg="' + rnd(['card', 'info', 'tests', 'rx']) + '"]') ? 'am-tab' : null;
+          }
+          if (p.tab !== 'visit' && !did.back) {
+            did.back = 1;
+            if (p.tab === 'rx' && Math.random() < 0.5 && cl('[data-act="wd-time"]')) return 'wd-time';
+            return cl('[data-act="am-tab"][data-arg="visit"]') ? 'am-tab' : null;
+          }
+          if (!did.talk) {
+            did.talk = 1;
+            const t = Array.from(document.querySelectorAll('[data-act="am-talk"]')).filter((b) => b.getAttribute('aria-disabled') !== 'true');
+            if (t.length) {
+              rnd(t).click();
+              return 'am-talk';
+            }
+          }
+          const due = P.dueTests(s, pt).filter((x) => !pt.tests.some((r) => r.test === x.test && r.day === s.day));
+          if (due.length && !did.order && Math.random() < (smart ? 0.9 : 0.5)) {
+            if (!document.querySelector('[data-act="wd-order"][data-arg="' + due[0].test + '"]')) return cl('[data-act="am-tab"][data-arg="visit"]') ? 'am-tab' : null;
+            did.order = 1;
+            return cl('[data-act="wd-order"][data-arg="' + due[0].test + '"]') ? 'wd-order' : null;
+          }
+          const own = pt.rx.filter((r) => r.kind !== 'int' && !r.home && !r.pre);
+          if (!own.length && !did.add && pt.sev >= 25) {
+            did.add = 1;
+            return cl('[data-act="am-rx"][data-arg="drug"]') || cl('[data-act="wd-add"][data-arg="drug"]') ? 'am-rx' : null;
+          }
+          if (!did.next) {
+            did.next = 1;
+            const n = smart ? (pt.sev >= 55 ? 3 : pt.sev >= 30 ? 7 : 14) : rnd(M.INTERVALS);
+            return cl('[data-act="am-next"][data-arg="' + n + '"]') ? 'am-next' : null;
+          }
+          if (M.canClose(s, pt).ok && !did.close) {
+            did.close = 1;
+            return cl('[data-act="am-close"]') ? 'am-close' : null;
+          }
+          if (cl('[data-act="am-end"]')) return 'am-end';
+          if (p.tab !== 'visit' && cl('[data-act="am-tab"][data-arg="visit"]')) return 'am-tab';
+          return cl('[data-act="am-back"]') ? 'am-back' : null;
+        }
+        const call = M.active(s).find((x) => x.pending);
+        if (call) return cl('[data-act="am-open"][data-arg="' + call.uid + '"]') ? 'am-open' : null;
+        const next = p.list.find((u) => {
+          const x = M.byUid(s, u);
+          return x && !x.done && !x.away && p.done[u] == null && !window.__am.skip[u];
+        });
+        if (next) return cl('[data-act="am-open"][data-arg="' + next + '"]') ? 'am-open' : null;
+        if (Math.random() < 0.15 && cl('[data-act="am-file"]')) return 'am-file';
+        return cl('[data-act="am-done"]') ? 'am-done' : null;
+      }, smart);
+      if (aa) continue;
+    }
     // Активности: «умный» режим — знает верные ответы и выбирает их с вероятностью 85%
     if (argv.includes('--smart')) {
       const sm = await page.evaluate(() => {
@@ -344,6 +463,8 @@ const cdp = flag('--cdp', null) || androidPkg;
       });
       if (sm) continue;
     }
+    // Выбор работы: --job pnd|hospital|private|uni (если доступна)
+    if (flag('--job', null) && (await click('[data-act="job-pick"][data-arg="' + flag('--job', null) + '"]'))) continue;
     // Активности: кликаем по смыслу
     const acted = await page.evaluate(() => {
       const q = (sel) => Array.from(document.querySelectorAll(sel)).filter((b) => b.getAttribute('aria-disabled') !== 'true');

@@ -50,7 +50,7 @@ const str = (v, min, max) => typeof v === 'string' && v.trim().length >= (min ||
 const words = (v) => (typeof v === 'string' ? v.trim().split(/\s+/).length : 0);
 const badChars = (v, where) => {
   if (typeof v !== 'string') return;
-  if (/[a-z]{4,}/i.test(v.replace(/(F|G|T|E|X|H|K|O)\d{1,2}(\.\d{1,2})?/g, '').replace(/CIWA-Ar|NMDA|CYP\w*|ICOCS|CANMAT/g, ''))) warns.push(`${where}: латиница в тексте: «${v.slice(0, 60)}…»`);
+  if (/[a-z]{4,}/i.test(v.replace(/(F|G|T|E|X|H|K|O)\d{1,2}(\.\d{1,2})?/g, '').replace(/CIWA-Ar|NMDA|CYP\w*|ICOCS|CANMAT|MMSE|PHQ|YMRS|PANSS|GAD|ISI|PDSS|PCL|PACS|Y-BOCS/g, ''))) warns.push(`${where}: латиница в тексте: «${v.slice(0, 60)}…»`);
   if (/\{[^}|]*\}/.test(v.replace(/\{(P|age|purpose|name)\}/g, '')) && !/\{[^{}|]*\|[^{}|]*\}/.test(v)) errors.push(`${where}: странные фигурные скобки: «${v.slice(0, 60)}»`);
 };
 
@@ -249,7 +249,7 @@ if (drugs.length || (D.wardPatients || []).length) {
     }
     for (const m of d.monitor || []) {
       if (!PH.TESTS[m.test]) errors.push(`${w}: неизвестный анализ ${m.test}`);
-      if (!['start', 'week', 'level', 'sx'].includes(m.when)) errors.push(`${w}: неверный when ${m.when}`);
+      if (!['start', 'week', 'level', 'sx', 'period'].includes(m.when)) errors.push(`${w}: неверный when ${m.when}`);
       if (m.only && !PH.TAG_NAMES[m.only]) errors.push(`${w}: неизвестное условие only ${m.only}`);
     }
     for (const k of d.kin || []) if (!drugIds.has(k)) errors.push(`${w}: родственный препарат ${k} не найден`);
@@ -261,6 +261,7 @@ if (drugs.length || (D.wardPatients || []).length) {
     seen('int:' + it.id, w);
     if (!str(it.name) || !str(it.note, 10)) errors.push(`${w}: нет name или note`);
     for (const k of Object.keys(it.eff || {})) if (!EFF.includes(k)) errors.push(`${w}: неизвестный домен ${k}`);
+    if (it.where && (!Array.isArray(it.where) || it.where.some((x) => !['ward', 'amb'].includes(x)))) errors.push(`${w}: неверное where`);
   }
   // КР: каждая запись ссылается на существующий препарат, класс, группу или вмешательство
   const GL = D.guidelines || {};
@@ -313,16 +314,79 @@ if (drugs.length || (D.wardPatients || []).length) {
     if (t.phase && !(GL[t.group] && GL[t.group].phases && GL[t.group].phases[t.phase])) errors.push(`${w}: нет фазы КР ${t.phase}`);
     for (const st of STAGES) if (!((t.quotes || {})[st] || []).length) errors.push(`${w}: нет реплик для стадии ${st}`);
   }
+  const AMB_ONLY = ['bipolar_maint', 'alcohol_dependence', 'insomnia', 'dementia_mild'];
   const groupsWithPts = new Set((D.wardPatients || []).map((t) => t.group));
-  for (const g of Object.keys(PH.GROUPS)) if (!groupsWithPts.has(g)) warns.push(`wardPatients: нет пациентов группы ${g}`);
+  for (const g of Object.keys(PH.GROUPS)) if (!groupsWithPts.has(g) && !AMB_ONLY.includes(g)) warns.push(`wardPatients: нет пациентов группы ${g}`);
   if (!(D.wardPatients || []).some((t) => (t.where || []).includes('study'))) errors.push('wardPatients: нет учебных пациентов');
   // Тексты
   const T = D.wardTexts || {};
+  const AT = D.ambTexts || {};
   for (const g of Object.keys(PH.GROUPS)) {
     for (const st of STAGES) {
+      if (AMB_ONLY.includes(g)) {
+        if (!(((AT.status || {})[g] || {})[st] || []).length) errors.push(`ambTexts.status.${g}.${st}: пусто`);
+        continue;
+      }
       if (!(((T.course || {})[g] || {})[st] || []).length) errors.push(`wardTexts.course.${g}.${st}: пусто`);
       if (!(((T.status || {})[g] || {})[st] || []).length) errors.push(`wardTexts.status.${g}.${st}: пусто`);
     }
+  }
+  // Амбулаторный приём: шаблоны пациентов
+  const AMB_PLACES = ['pnd', 'private', 'uni'];
+  const TRIG = ['quit_smoking', 'nsaid', 'pregnancy', 'wants_stop'];
+  for (const t of D.ambPatients || []) {
+    const w = `ambPatients.${t.id}`;
+    seen('amb:' + t.id, w);
+    if (!PH.GROUPS[t.group]) errors.push(`${w}: неизвестная группа ${t.group}`);
+    if (!['new', 'inherited'].includes(t.kind)) errors.push(`${w}: неверный kind ${t.kind}`);
+    if (!(t.where || []).length || t.where.some((x) => !AMB_PLACES.includes(x))) errors.push(`${w}: неверное where`);
+    if (!['m', 'f'].includes(t.sex)) errors.push(`${w}: нет пола`);
+    if (!(Array.isArray(t.age) && t.age[0] <= t.age[1])) errors.push(`${w}: неверный возраст`);
+    if (!(t.sev0 >= 5 && t.sev0 <= 95)) errors.push(`${w}: sev0 вне 5–95`);
+    for (const k of ['dx', 'referral', 'complaints', 'history', 'status', 'pitfall', 'ideal']) if (!str(t[k], 20)) errors.push(`${w}: нет ${k}`);
+    for (const k of ['referral', 'complaints', 'history', 'somatic', 'status', 'pitfall', 'ideal']) badChars(t[k], w + '.' + k);
+    for (const x of t.traits || []) if (!tagOk(x)) errors.push(`${w}: неизвестная метка ${x}`);
+    for (const m of t.meds_home || []) if (!PH.TAG_NAMES[m.tag] || !str(m.name)) errors.push(`${w}: неверный сопутствующий препарат ${JSON.stringify(m)}`);
+    for (const id of (t.intolerant || []).concat(t.failed || [])) if (!drugIds.has(id)) errors.push(`${w}: неизвестный препарат ${id}`);
+    for (const r of (t.rx || []).concat(t.home_rx || [])) {
+      const d = drugs.find((x) => x.id === r.id);
+      if (!d) errors.push(`${w}: неизвестный препарат ${r.id}`);
+      else {
+        const f = d.forms.find((x) => x.route === (r.route || 'po'));
+        if (!f) errors.push(`${w}: у ${r.id} нет формы ${r.route}`);
+        else if (f.steps.indexOf(r.dose) < 0) errors.push(`${w}: доза ${r.dose} не из шагов ${r.id}`);
+        if (r.time && !PH.TIMES[r.time]) errors.push(`${w}: неверное время приёма ${r.time}`);
+      }
+    }
+    if (t.kind === 'new') {
+      const opts = (t.dxq || {}).opts || [];
+      if (opts.length < 3) errors.push(`${w}: мало вариантов диагноза`);
+      if (opts.filter((o) => o.ok === true).length !== 1) errors.push(`${w}: нужен ровно один верный диагноз`);
+      for (const o of opts) if (!str(o.t, 5) || !str(o.why, 20)) errors.push(`${w}: вариант диагноза без текста или пояснения`);
+      if (!str(t.somatic, 10)) errors.push(`${w}: нет somatic`);
+    } else {
+      if (!(t.rx || []).length) errors.push(`${w}: у принятого пациента нет текущего лечения`);
+      if (!(t.past || []).length) errors.push(`${w}: нет записей прежнего врача`);
+      for (const x of t.past || []) if (!(x.ago >= 0) || !str(x.who) || !str(x.text, 10)) errors.push(`${w}: неверная запись прежнего врача`);
+      for (const x of t.pastLabs || []) if (!PH.TESTS[x.test] || !(x.ago >= 0) || !x.v) errors.push(`${w}: неверный прежний анализ ${x.test}`);
+    }
+    for (const x of t.triggers || []) if (!TRIG.includes(x.k) || !(Array.isArray(x.at) && x.at[0] <= x.at[1])) errors.push(`${w}: неверный поворот ${JSON.stringify(x)}`);
+    for (const x of t.issues || []) {
+      if (!str(x.id) || !str(x.text) || !str(x.ok, 10) || !str(x.bad, 10) || typeof x.check !== 'function') errors.push(`${w}: неверная проверка ${x.id}`);
+    }
+    if (t.phase && !(GL[t.group] && GL[t.group].phases && GL[t.group].phases[t.phase])) errors.push(`${w}: нет фазы КР ${t.phase}`);
+    if (t.rel && !str(t.rel)) errors.push(`${w}: неверный rel`);
+  }
+  for (const pl of AMB_PLACES) {
+    if (!(D.ambPatients || []).some((t) => t.kind === 'new' && t.where.includes(pl))) errors.push(`ambPatients: нет новых пациентов для ${pl}`);
+    if (!(D.ambPatients || []).some((t) => t.kind === 'inherited' && t.where.includes(pl))) errors.push(`ambPatients: нет принятых пациентов для ${pl}`);
+  }
+  const ambText = [];
+  const walkA = (x) => (typeof x === 'string' ? ambText.push(x) : x && typeof x === 'object' && Object.values(x).forEach(walkA));
+  walkA(AT);
+  for (const x of ambText) {
+    const rest = x.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, '').replace(/\{(P|REL|N|KG)\}/g, '');
+    if (/[{}]/.test(rest)) errors.push(`ambTexts: странные фигурные скобки в «${x.slice(0, 50)}»`);
   }
   const allText = [];
   const walk = (x) => (typeof x === 'string' ? allText.push(x) : x && typeof x === 'object' && Object.values(x).forEach(walk));
@@ -339,6 +403,7 @@ const counts = {
   доптест: (D.extraTest || []).length,
   препаратов: (D.drugs || []).length,
   'пациентов отделения': (D.wardPatients || []).length,
+  'амбулаторных пациентов': (D.ambPatients || []).length,
 };
 console.log('Загружено:', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', '));
 warns.forEach((w) => console.log('  ⚠ ' + w));

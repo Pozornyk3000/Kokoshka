@@ -527,7 +527,7 @@
       name: 'Клозапин',
       cls: 'clozapine',
       group: 'antipsychotic',
-      forms: [{ route: 'po', label: 'таблетки', steps: [12.5, 25, 50, 100, 150, 200, 250, 300, 400, 450, 500, 600], split: 2 }],
+      forms: [{ route: 'po', label: 'таблетки', steps: [12.5, 25, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 600], split: 2 }],
       doses: { psychosis: { start: 12.5, min: 200, max: 600 }, mania: { start: 12.5, min: 200, max: 600 } },
       titration: { maxUpPerDay: 25, note: 'По 25–50 мг в сутки; быстрая титрация опасна судорогами, гипотензией и миокардитом.' },
       onset: { psychosis: 14, mania: 10 },
