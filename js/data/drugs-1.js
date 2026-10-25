@@ -26,7 +26,7 @@
       forms: [
         { route: 'po', label: 'таблетки, капли', steps: [0.5, 1, 1.5, 3, 5, 7.5, 10, 15, 20], split: 2 },
         { route: 'im', label: 'в/м, по требованию', steps: [2.5, 5, 10], prn: true },
-        { route: 'depot', label: 'деканоат в/м', steps: [50, 100, 150, 200], interval: 28, range: { start: 50, min: 50, max: 300 } },
+        { route: 'depot', label: 'деканоат в/м, раз в 4 недели', steps: [50, 100, 150, 200], interval: 28, lag: 7, range: { start: 50, min: 75, max: 300 } },
       ],
       doses: { psychosis: { start: 3, min: 4, max: 20 }, mania: { start: 5, min: 5, max: 20 }, bpsd: { start: 0.5, min: 1, max: 3 } },
       titration: { maxUpPerDay: 2.5, note: 'Повышают на 1,5–2,5 мг в сутки; при первом эпизоде — медленнее.' },
@@ -51,7 +51,7 @@
       name: 'Флуфеназин',
       cls: 'fga_high',
       group: 'antipsychotic',
-      forms: [{ route: 'depot', label: 'деканоат в/м', steps: [12.5, 25, 50], interval: 21, range: { start: 12.5, min: 12.5, max: 100 }, testDose: 12.5 }],
+      forms: [{ route: 'depot', label: 'деканоат в/м, раз в 2–4 недели', steps: [12.5, 25, 50], interval: 21, lag: 5, range: { start: 12.5, min: 25, max: 100 }, testDose: 12.5 }],
       doses: { psychosis: { start: 12.5, min: 12.5, max: 100 } },
       onset: { psychosis: 14 },
       eff: { psychosis: 0.75, mania: 0.55 },
@@ -91,7 +91,7 @@
       forms: [
         { route: 'po', label: 'таблетки', steps: [10, 20, 30, 40, 50, 75], split: 2 },
         { route: 'im', label: 'Акуфаз в/м (на 2–3 суток)', steps: [50, 100, 150], interval: 3, course: 12, range: { start: 50, min: 50, max: 150 } },
-        { route: 'depot', label: 'Депо в/м', steps: [100, 200, 400], interval: 14, range: { start: 100, min: 200, max: 400 } },
+        { route: 'depot', label: 'Депо в/м, раз в 2–4 недели', steps: [100, 200, 400], interval: 14, lag: 7, range: { start: 100, min: 200, max: 400 } },
       ],
       doses: { psychosis: { start: 10, min: 20, max: 75 }, mania: { start: 10, min: 20, max: 75 } },
       titration: { maxUpPerDay: 10, note: 'Повышают на 10 мг в сутки.' },
@@ -113,7 +113,7 @@
       group: 'antipsychotic',
       forms: [
         { route: 'po', label: 'таблетки', steps: [0.5, 1, 2, 3, 5, 10, 15, 20, 30, 40], split: 2 },
-        { route: 'depot', label: 'Депо в/м', steps: [20, 40, 60], interval: 14, range: { start: 20, min: 20, max: 100 } },
+        { route: 'depot', label: 'Депо в/м, раз в 2–4 недели', steps: [20, 40, 60], interval: 14, lag: 7, range: { start: 20, min: 30, max: 100 } },
       ],
       doses: { psychosis: { start: 3, min: 5, max: 40 }, mania: { start: 3, min: 5, max: 40 }, depression: { start: 0.5, min: 1, max: 3 } },
       titration: { maxUpPerDay: 3, note: 'Повышают на 1–3 мг в сутки.' },
@@ -261,8 +261,10 @@
       group: 'antipsychotic',
       forms: [
         { route: 'po', label: 'таблетки, раствор', steps: [0.25, 0.5, 1, 2, 3, 4, 6, 8], split: 2 },
-        { route: 'depot', label: 'Конста в/м', steps: [25, 37.5, 50], interval: 14, range: { start: 25, min: 25, max: 50 } },
+        { route: 'depot', label: 'Конста в/м, раз в 2 недели (первые 3 недели — с таблетками)', steps: [25, 37.5, 50], interval: 14, lag: 21, range: { start: 25, min: 25, max: 50 } },
       ],
+      kin: ['paliperidone'],
+      elderlyMax: 4,
       doses: {
         psychosis: { start: 2, min: 3, max: 16 },
         mania: { start: 2, min: 2, max: 6 },
@@ -297,8 +299,9 @@
       group: 'antipsychotic',
       forms: [
         { route: 'po', label: 'таблетки пролонг.', steps: [3, 6, 9, 12], split: 1 },
-        { route: 'depot', label: 'пальмитат в/м, раз в месяц', steps: [50, 75, 100, 150], interval: 28, range: { start: 150, min: 50, max: 150 } },
+        { route: 'depot', label: 'пальмитат в/м: 150 мг в 1-й день, 100 мг на 8-й, далее раз в месяц', steps: [50, 75, 100, 150], interval: 28, lag: 4, range: { start: 100, min: 75, max: 150 } },
       ],
+      kin: ['risperidone'],
       doses: { psychosis: { start: 6, min: 6, max: 12 }, mania: { start: 6, min: 6, max: 12 } },
       titration: { maxUpPerDay: 0.6, note: 'Повышают на 3 мг не чаще раза в 5 дней.' },
       onset: { psychosis: 12, mania: 6 },
@@ -321,6 +324,7 @@
         { route: 'po', label: 'таблетки', steps: [2.5, 5, 10, 15, 20], split: 1 },
         { route: 'im', label: 'в/м, по требованию', steps: [5, 10], prn: true },
       ],
+      elderlyMax: 10,
       doses: { psychosis: { start: 10, min: 10, max: 20 }, mania: { start: 15, min: 10, max: 20 }, bpsd: { start: 2.5, min: 2.5, max: 10 } },
       titration: { maxUpPerDay: 5, note: 'Повышают на 5 мг не чаще раза в сутки.' },
       onset: { psychosis: 10, mania: 4, bpsd: 5 },
@@ -345,6 +349,7 @@
       cls: 'sga',
       group: 'antipsychotic',
       forms: [{ route: 'po', label: 'таблетки, пролонг.', steps: [25, 50, 100, 150, 200, 300, 400, 600, 800], split: 2 }],
+      elderlyMax: 300,
       doses: {
         psychosis: { start: 50, min: 300, max: 750 },
         mania: { start: 100, min: 400, max: 800 },
@@ -371,7 +376,7 @@
       group: 'antipsychotic',
       forms: [
         { route: 'po', label: 'таблетки', steps: [2, 5, 10, 15, 20, 30], split: 1 },
-        { route: 'depot', label: 'Мейнтена в/м, раз в месяц', steps: [300, 400], interval: 28, range: { start: 400, min: 300, max: 400 } },
+        { route: 'depot', label: 'Мейнтена в/м, раз в месяц', steps: [300, 400], interval: 28, lag: 14, range: { start: 400, min: 300, max: 400 } },
       ],
       doses: {
         psychosis: { start: 10, min: 10, max: 30 },

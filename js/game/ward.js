@@ -106,6 +106,7 @@
       },
       traits: (t.traits || []).slice(),
       meds_home: (t.meds_home || []).slice(),
+      phase: t.phase || null,
       intolerant: (t.intolerant || []).slice(),
       failed: (t.failed || []).slice(),
       resp: Object.assign({}, t.resp || {}),
@@ -121,7 +122,7 @@
       monMissed: {},
       seenSe: {},
       seenText: {},
-      flags: {},
+      flags: Object.assign({}, t.flags || {}),
       away: null,
       done: false,
       toxText: t.tox || null,
@@ -130,7 +131,7 @@
     (t.home_rx || []).forEach((r) => {
       const d = P().drug(r.id);
       if (!d) return;
-      pt.rx.push({ id: r.id, kind: 'drug', route: r.route || 'po', dose: r.dose, since: s.day - (r.days || 30), changed: s.day - (r.days || 30), home: true });
+      pt.rx.push({ id: r.id, kind: 'drug', route: r.route || 'po', dose: r.dose, baseDose: r.dose, since: s.day - (r.days || 30), changed: s.day - (r.days || 30), home: true });
     });
     if (pt.group === 'alcohol_withdrawal' || pt.group === 'delirium_tremens') {
       pt.lab.alt = Math.max(pt.lab.alt, b.alt);
@@ -191,6 +192,18 @@
       const it = r.kind === 'int' ? P().int(r.id) : null;
       if (it && it.insight) pt.insight = Math.min(0.9, pt.insight + it.insight);
     });
+    // обезвоживание: без инфузии нарастает, с ней — проходит за пару суток
+    if (pt.flags.dehydrated) {
+      const inf = pt.rx.find((r) => r.id === 'infusion');
+      if (inf && s.day - inf.since >= 2) {
+        pt.flags.dehydrated = false;
+        note(s, pt, 'staff', 'Обезвоживание купировано: тахикардия меньше, слизистые влажные, диурез восстановился.', '');
+      } else if (!inf && day >= 2 && !pt.flags.dehydWarn) {
+        pt.flags.dehydWarn = true;
+        pt.harm += 1;
+        note(s, pt, 'staff', 'Медсестра: «Почти не пьёт третьи сутки, пульс 118, давление падает». Нарастает обезвоживание — нужна инфузионная терапия.', 'alarm');
+      }
+    }
     if (pt.sev < 50 && pt.insight < 0.7) pt.insight = Math.min(0.7, pt.insight + 0.012);
     updAdherence(s, pt);
     const E = efficacy(s, pt);
@@ -202,6 +215,7 @@
     if (pt.group === 'bpd_crisis' && pt.rx.some((r) => cls(r) === 'bzd')) dS += 1.2;
     dS += (Math.random() * 2 - 1) * 1.3;
     dS += seStress(pt);
+    if (pt.flags.dehydrated && !pt.rx.some((r) => r.id === 'infusion')) dS += 1;
     pt.sev = U.clamp(pt.sev + dS, 0, 100);
     sideEffects(s, pt);
     updLabs(s, pt);
@@ -250,7 +264,7 @@
         let e = (item.eff && item.eff[k]) || 0;
         if (!e) return;
         if (rx.kind === 'int') {
-          e *= ramp(on, (item.onset && item.onset[k]) || 7);
+          e *= ramp(on, onsetOf(item, k));
           // при тяжёлом психозе психотерапия почти не работает
           if (item.kind === 'psychotherapy' && pt.sev > 70 && (k === 'psychosis' || k === 'mania')) e *= 0.3;
           per[k].push(e);
@@ -259,11 +273,25 @@
         if (rx.prn) return;
         // к противотревожному и седативному действию бензодиазепинов развивается толерантность
         if (item.cls === 'bzd' && k !== 'withdrawal') e *= U.clamp(1 - (s.day - rx.since - 14) / 50, 0.15, 1);
-        const f = P().doseFactor(rx, pt) * P().levelMult(pt, item);
-        const gf = f <= 0 ? 0 : f < 1 ? Math.pow(f, 1.4) : Math.min(1.12, 1 + (f - 1) * 0.12);
-        let onset = (item.onset && item.onset[k]) || 7;
-        if (rx.route === 'depot' && !pt.rx.some((o) => o.id === rx.id && o.route === 'po')) onset *= 1.5;
-        e *= gf * ramp(on, onset) * respOf(pt, item) * pt.adherence;
+        const lvl = P().levelMult(pt, item);
+        const gf = gfOf(P().doseFactor(rx, pt) * lvl);
+        const onset = onsetOf(item, k);
+        let start = rx.since;
+        if (rx.route === 'depot') {
+          // пролонгированная форма продолжает действие таблеток того же препарата
+          const prior = kinStart(pt, rx);
+          if (prior != null) start = Math.min(start, prior);
+          e *= depotPk(s, pt, rx);
+        }
+        if (rx.home) {
+          // привычная схема уже «вошла» в исходное состояние: новый эффект даёт только прибавка дозы
+          const g0 = gfOf(P().doseFactor({ id: rx.id, route: rx.route, dose: rx.baseDose }, pt) * lvl);
+          const add = Math.max(0, gf - g0);
+          e *= add * ramp((s.day - (rx.upSince || s.day)) * sp, onset) * respOf(pt, item) * pt.adherence;
+          per[k].push(e);
+          return;
+        }
+        e *= gf * ramp((s.day - start) * sp, onset) * respOf(pt, item) * pt.adherence;
         per[k].push(e);
       });
     });
@@ -273,6 +301,31 @@
     return { total, dom };
   }
   W.efficacy = efficacy;
+  function onsetOf(item, k) {
+    return item.onset && item.onset[k] != null ? item.onset[k] : 7;
+  }
+  function gfOf(f) {
+    return f <= 0 ? 0 : f < 1 ? Math.pow(f, 1.4) : Math.min(1.12, 1 + (f - 1) * 0.12);
+  }
+  /** Когда начат приём того же (или родственного) препарата внутрь, если он ещё идёт или отменён не раньше старта инъекций. */
+  function kinStart(pt, rx) {
+    let best = null;
+    pt.rx.forEach((o) => {
+      if (o !== rx && P().oral(o.route) && P().kin(o.id, rx.id)) best = best == null ? o.since : Math.min(best, o.since);
+    });
+    (pt.past || []).forEach((o) => {
+      if (P().oral(o.route) && P().kin(o.id, rx.id) && o.until >= rx.since - 2) best = best == null ? o.since : Math.min(best, o.since);
+    });
+    return best;
+  }
+  /** Набор концентрации пролонгированной формы: пока она не достигнута, нужны таблетки. */
+  function depotPk(s, pt, rx) {
+    const f = P().form(P().drug(rx.id), 'depot');
+    const lag = f.lag || 7;
+    const oralOn = pt.rx.some((o) => o !== rx && P().oral(o.route) && P().kin(o.id, rx.id));
+    if (oralOn) return 1;
+    return U.clamp((s.day - rx.since) / lag, 0.15, 1);
+  }
 
   // Естественное течение абстиненции и делирия по суткам госпитализации (пунктов тяжести в сутки)
   const NAT_W = [0, 9, 7, 2, -7, -11, -14, -15, -15, -15];
@@ -332,6 +385,8 @@
         if (k === 'activation') v *= on <= 12 ? 1 : 0.2;
         if (k === 'sedation' || k === 'orthostatic') v *= on <= 7 ? 1 : 0.75; // привыкание
         if (k === 'sedation' && d.cls === 'bzd' && on > 30) v *= 0.55;
+        // при отмене алкоголя гиперактивация и перекрёстная толерантность «съедают» седацию — пока отмена тяжёлая
+        if (k === 'sedation' && d.cls === 'bzd' && t.alcohol) v *= U.clamp(1.2 - pt.sev / 80, 0.25, 1);
         load[k] += v * Math.pow(f, SE_EXP[k] || 0.85);
       });
     });
@@ -385,9 +440,10 @@
     let altT = b.alt + 14 * (load.hepatotox || 0);
     if (t.alcohol) altT = Math.max(28, b.alt * 0.55) + 14 * (load.hepatotox || 0);
     L.alt += (altT - L.alt) * 0.2;
-    // натрий
-    const drop = 0.35 * (load.hyponatremia || 0) * (t.thiazide ? 1.5 : 1);
-    L.na = U.clamp(L.na - drop + (drop < 0.05 ? (b.na - L.na) * 0.25 : 0), 116, 147);
+    // натрий: СИАДГ на антидепрессантах и карбамазепине; риск — возраст, тиазиды, женский пол
+    const rf = (t.elderly ? 2 : 1) * (t.thiazide ? 1.8 : 1) * (pt.sex === 'f' ? 1.2 : 1) * (t.hyponatremia_risk ? 1.3 : 1);
+    const naT = b.na - Math.min(16, 3 * (load.hyponatremia || 0) * rf);
+    L.na = U.clamp(L.na + (naT - L.na) * 0.15, 116, 147);
     // литий
     const li = pt.rx.find((r) => r.id === 'lithium' && !r.prn);
     if (li) {
@@ -464,6 +520,16 @@
   const isAD = (r, d) => d && d.group === 'antidepressant';
   const isMoodStab = (r, d) => d && (d.group === 'moodstab' || (d.group === 'antipsychotic' && (d.eff.mania || 0) >= 0.5));
   const isSero = (r, d) => d && (d.flags || []).indexOf('serotonergic') >= 0;
+  /** Число разных антипсихотиков (таблетки и пролонг одного препарата — один). */
+  function apCount(pt) {
+    const ids = [];
+    pt.rx.forEach((r) => {
+      const d = r.kind === 'int' ? null : P().drug(r.id);
+      if (!d || d.group !== 'antipsychotic' || r.prn) return;
+      if (!ids.some((x) => P().kin(x, r.id))) ids.push(r.id);
+    });
+    return ids.length;
+  }
   const STRONG_SERO = ['clomipramine', 'fluoxetine', 'paroxetine', 'sertraline', 'escitalopram', 'citalopram', 'fluvoxamine', 'venlafaxine', 'duloxetine'];
 
   function stopWhere(s, pt, pred, why) {
@@ -503,7 +569,11 @@
   W.EVENTS = {
     refusal: {
       title: 'Отказ от таблеток',
-      chance: (s, pt) => (pt.insight < 0.35 && pt.sev > 55 && !pt.refusing && has(pt, (r, d) => d && !r.prn && r.route === 'po' && d.group !== 'other') ? 0.18 + (pt.sx.eps > 1.5 || pt.sx.akathisia > 1.5 || pt.sx.sedation > 2.2 ? 0.15 : 0) : 0),
+      cooldown: 10,
+      chance: (s, pt) =>
+        pt.insight < 0.35 && pt.sev > 55 && !pt.refusing && has(pt, (r, d) => d && !r.prn && r.route === 'po' && d.group !== 'other')
+          ? (0.18 + (pt.sx.eps > 1.5 || pt.sx.akathisia > 1.5 || pt.sx.sedation > 2.2 ? 0.15 : 0)) * Math.pow(0.5, pt.flags.talks || 0)
+          : 0,
       start: (s, pt) => {
         pt.refusing = true;
         return pickText(pt, 'refusal', (D().wardTexts || {}).refusal) || '{P} прячет таблетки за щёку и выплёвывает их в раковину.';
@@ -516,6 +586,7 @@
           fx: (s, pt) => {
             pt.refusing = false;
             pt.insight = Math.min(1, pt.insight + 0.12);
+            pt.flags.talks = (pt.flags.talks || 0) + 1;
           },
           why: 'Отказ почти всегда чем-то объясним — страхом, бредом отравления, побочными эффектами. Союз с пациентом надёжнее любых уколов.',
         },
@@ -643,14 +714,14 @@
         if (recentUp(s, pt, isAP)) risk *= 2;
         if (has(pt, (r, d) => isAP(r, d) && r.route === 'im')) risk *= 1.5;
         if (pt.group === 'alcohol_withdrawal' || pt.group === 'delirium_tremens') risk *= 2;
-        if (pt.rx.filter((r) => isAP(r, P().drug(r.id)) && !r.prn).length >= 2) risk *= 1.5;
+        if (apCount(pt) >= 2) risk *= 1.5;
         if (t.nms_history) risk *= 4;
         return Math.min(0.05, 0.0002 * risk);
       },
       preventable: (s, pt) =>
         recentUp(s, pt, isAP) ||
         pt.rx.some((r) => isAP(r, P().drug(r.id)) && (r.route === 'im' || P().doseFactor(r, pt) > 1.5)) ||
-        pt.rx.filter((r) => isAP(r, P().drug(r.id)) && !r.prn).length >= 2,
+        apCount(pt) >= 2,
       start: (s, pt) => {
         pt.flags.nms = true;
         pt.traits.push('nms_history');
@@ -852,7 +923,11 @@
       title: 'Гипонатриемия',
       once: true,
       chance: (s, pt) => (pt.lab.na < 128 ? 0.45 : 0),
-      preventable: () => true,
+      // предотвратимо: группа риска, а натрий не контролировали
+      preventable: (s, pt) => {
+        const t = P().tags(pt);
+        return (t.elderly || t.thiazide || t.hyponatremia_risk) && !P().recentTest(pt, 'bio', 10);
+      },
       start: (s, pt) => pickText(pt, 'hyponatremia', (D().wardTexts.se || {}).hyponatremia) || 'Заторможенность, спутанность, утром — падение у кровати.',
       q: (s, pt) => 'Заторможенность, спутанность, утром — падение у кровати. Натрий — ' + Math.round(pt.lab.na) + ' ммоль/л. Ваши действия?',
       opts: [
@@ -1080,12 +1155,12 @@
       title: 'Падение',
       chance: (s, pt) => {
         const t = P().tags(pt);
-        if (!t.elderly) return 0;
+        if (!t.elderly || pt.flags.fell) return 0;
         const x = pt.sx;
-        const v = (x.sedation || 0) + (x.orthostatic || 0) + (has(pt, (r, d) => d && (d.cls === 'bzd' || d.cls === 'z')) ? 1 : 0);
-        return v >= 2.2 && !pt.flags.fell ? 0.07 : 0;
+        const v = (x.sedation || 0) + (x.orthostatic || 0) + (fallRisky(pt) ? 1.5 : 0);
+        return v > 3 ? Math.min(0.06, 0.006 * (v - 3)) : 0;
       },
-      preventable: () => true,
+      preventable: (s, pt) => fallRisky(pt),
       start: (s, pt) => {
         pt.flags.fell = s.day;
         return 'Ночью — падение по дороге в туалет: ушиб бедра, перелома, по счастью, нет.';
@@ -1249,6 +1324,37 @@
       ],
     },
 
+    dt_critical: {
+      title: 'Утяжеление делирия',
+      once: true,
+      chance: (s, pt) => (pt.group === 'delirium_tremens' && pt.sev >= 92 && (pt.lastE ? pt.lastE.total : 0) < 0.35 ? 0.35 : 0),
+      preventable: (s, pt) => !has(pt, (r, d) => d && d.cls === 'bzd'),
+      start: () => 'Ночью — оглушение, температура 39,6, давление 85/50, пульс 140, «мушки» и обирание. Делирий переходит в тяжёлый, угрожающий жизни.',
+      q: () => 'Температура 39,6, давление 85/50, пульс 140, оглушение. Делирий утяжеляется. Ваши действия?',
+      opts: [
+        {
+          t: 'Немедленный перевод в реанимацию: инфузия, бензодиазепины под мониторингом, тиамин, коррекция электролитов',
+          ok: true,
+          fx: (s, pt) => {
+            pt.away = { until: s.day + 4, where: 'реанимации' };
+            if (!has(pt, (r, d) => d && d.cls === 'bzd')) addDrug(s, pt, 'diazepam', 'po', 40);
+            if (!has(pt, (r) => r.id === 'thiamine')) addDrug(s, pt, 'thiamine', 'im', 500);
+          },
+          why: 'Тяжёлый делирий с гипертермией и гипотонией смертельно опасен. Его предупреждает достаточная доза бензодиазепина с первых часов.',
+        },
+        {
+          t: 'Оставить в отделении, ввести галоперидол и жаропонижающее',
+          ok: false,
+          fx: (s, pt) => {
+            pt.harm += 2;
+            pt.away = { until: s.day + 6, where: 'реанимации' };
+            if (!has(pt, (r, d) => d && d.cls === 'bzd')) addDrug(s, pt, 'diazepam', 'po', 40);
+          },
+          why: 'Галоперидол без бензодиазепина утяжеляет делирий и снижает судорожный порог; лечить такое состояние нужно в реанимации.',
+        },
+      ],
+    },
+
     bzd_withdrawal: {
       title: 'Синдром отмены бензодиазепина',
       once: true,
@@ -1278,6 +1384,15 @@
       ],
     },
   };
+
+  /** Препараты, которых у пожилых лучше избегать из-за падений. */
+  function fallRisky(pt) {
+    return pt.rx.some((r) => {
+      const d = r.kind === 'int' ? null : P().drug(r.id);
+      if (!d) return false;
+      return d.cls === 'bzd' || d.cls === 'z' || d.cls === 'tca' || d.cls === 'fga_low' || d.cls === 'anticholinergic' || (d.elderlyMax && P().oral(r.route) && r.dose > d.elderlyMax);
+    });
+  }
 
   /** Последнее начало или повышение дозы антипсихотика, способного вызвать ЭПС. */
   function lastAPChange(pt) {
@@ -1420,6 +1535,7 @@
   function rec(s, pt, msgs) {
     msgs.forEach((m) => {
       pt.rev[m.lvl] = (pt.rev[m.lvl] || 0) + 1;
+      if (m.major) pt.rev.major = (pt.rev.major || 0) + 1;
       pt.rev.list.push({ day: s.day, lvl: m.lvl, text: m.text, cite: m.cite || '' });
     });
     if (pt.rev.list.length > 80) pt.rev.list.splice(0, pt.rev.list.length - 80);
@@ -1455,12 +1571,14 @@
     if (dose === prev) return [];
     const kind = dose > prev ? 'up' : 'down';
     // резкое снижение бензодиазепина после длительного приёма
-    if (d.cls === 'bzd' && s.day - rx.since > 21 && dose < prev * 0.6) {
+    if (d.cls === 'bzd' && s.day - rx.since > 21 && dose < prev * 0.5) {
       pt.flags.bzdCut = s.day;
       pt.flags.bzdPrev = prev;
     }
     rx.dose = dose;
     if (kind === 'up') rx.upCount = (rx.upCount || 0) + 1;
+    if (rx.home && kind === 'up' && !rx.upSince) rx.upSince = s.day;
+    if (rx.home && dose <= rx.baseDose) rx.upSince = null;
     const msgs = P().review(s, pt, rx, kind, prev);
     rx.changed = s.day;
     if (rx.id === 'lamotrigine' && kind === 'up' && dose - prev > 25) pt.flags.lamoFast = true;
@@ -1481,17 +1599,40 @@
     return W.setDose(s, pt, idx, steps[j]);
   };
 
+  /** Отменить сопутствующий препарат пациента (например, НПВС перед литием). */
+  W.stopHome = function (s, pt, tag) {
+    const i = (pt.meds_home || []).findIndex((m) => m.tag === tag);
+    if (i < 0) return null;
+    const m = pt.meds_home.splice(i, 1)[0];
+    log(s, pt, 'Отменён сопутствующий препарат: ' + m.name + (HOME_ALT[tag] ? '. ' + HOME_ALT[tag] : '') + '.');
+    return m;
+  };
+  const HOME_ALT = {
+    nsaid: 'Обезболивание — парацетамол',
+    thiazide: 'Терапевт заменит диуретик',
+    acei: 'Терапевт подберёт другой гипотензивный препарат',
+    arb: 'Терапевт подберёт другой гипотензивный препарат',
+    omeprazole: 'Терапевт заменит на фамотидин',
+    tramadol: 'Обезболивание — без опиоидов',
+    macrolide: 'Антибиотик заменён',
+    ciprofloxacin: 'Антибиотик заменён',
+  };
+  W.HOME_ALT = HOME_ALT;
+
   W.stop = function (s, pt, idx) {
     const rx = pt.rx[idx];
     if (!rx) return [];
+    if (rx.kind !== 'int' && P().oral(rx.route) && s.day - rx.since >= 3) pt.oralTried = (pt.oralTried || []).concat([rx.id]);
     const item = P().item(rx);
     const msgs = P().review(s, pt, rx, 'stop');
     const d = rx.kind === 'int' ? null : P().drug(rx.id);
-    if (d && d.cls === 'bzd' && s.day - rx.since > 21 && !pt.rx.some((o) => o !== rx && cls(o) === 'bzd')) {
+    const lowStep = d ? (P().form(d, rx.route).steps || [rx.dose])[0] : 0;
+    if (d && d.cls === 'bzd' && s.day - rx.since > 21 && rx.dose > lowStep * 2 + 0.001 && !pt.rx.some((o) => o !== rx && cls(o) === 'bzd')) {
       pt.flags.bzdCut = s.day;
       pt.flags.bzdPrev = rx.dose;
     }
     pt.rx.splice(idx, 1);
+    if (rx.kind !== 'int') pt.past = (pt.past || []).concat([{ id: rx.id, route: rx.route, since: rx.since, until: s.day }]).slice(-20);
     log(s, pt, 'Отменено: ' + (item ? item.name.toLowerCase() : rx.id) + '.');
     return rec(s, pt, msgs);
   };
@@ -1594,8 +1735,13 @@
     else if (how === 'discharge' && los < g.los[0] && pt.sev > g.discharge) losS = 60;
     const m = how === 'discharge' ? maintenance(s, pt) : { msgs: [], adj: 0 };
     const wo = 0.4 * w;
-    let total = U.clamp(Math.round(wo * outcome + (0.65 - wo) * kr + 0.15 * safety + 0.1 * mon + 0.1 * losS + m.adj), 0, 100);
+    let total = U.clamp(Math.round(wo * outcome + (0.65 - wo) * kr + 0.15 * safety + 0.1 * mon + 0.1 * losS + m.adj - 4 * pt.harm - 3 * r.err), 0, 100);
     total = Math.min(total, 30 + outcome); // без улучшения хорошей оценки не бывает
+    // грубая ошибка или предотвратимое осложнение — «отлично» уже не поставят
+    const slips = pt.harm + r.err + (r.major || 0) + pt.wrong + (pt.flags.illegal ? 1 : 0);
+    if (slips >= 2) total = Math.min(total, 74);
+    else if (slips >= 1) total = Math.min(total, 84);
+    if (!pt.flags.firstLine && P().gl(pt)) total = Math.min(total, 60); // лечение так и не начато по рекомендациям
     return { total, outcome, kr, safety, mon, los: losS, days: los, maint: m.msgs };
   };
 

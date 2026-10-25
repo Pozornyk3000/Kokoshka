@@ -85,6 +85,7 @@ function run(seed) {
         const i = pt.rx.findIndex((r) => r.id === a[1]);
         if (i >= 0) say(hd, W.stop(s, pt, i));
       } else if (a[0] === 'order') W.order(s, pt, a[1]);
+      else if (a[0] === 'home') W.stopHome(s, pt, a[1]);
     }
     if (plan.monitor !== false) P.dueTests(s, pt).forEach((x) => W.order(s, pt, x.test));
     // выписка

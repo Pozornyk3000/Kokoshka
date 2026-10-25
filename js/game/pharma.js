@@ -142,6 +142,7 @@
     const g = P.gl(pt);
     const has = (k) => g && g.phases && g.phases[k];
     if (pt.group === 'schizophrenia' && (pt.failed || []).length >= 2 && has('resistant')) return 'resistant';
+    if (pt.phase && has(pt.phase)) return pt.phase;
     if (pt.group === 'depression' && (pt.sev0 || 0) >= 65 && has('severe')) return 'severe';
     return 'acute';
   };
@@ -279,6 +280,7 @@
         if (l.line === 'avoid') out.push({ lvl: 'err', text: l.entry.why || 'Не рекомендуется при этом состоянии.', cite: c });
         else if (l.line === 'first') out.push({ lvl: 'ok', text: item.name + ' — входит в основную тактику.' + recText(l.entry), cite: c });
         else if (l.line) out.push({ lvl: 'ok', text: item.name + ' — уместно как дополнение.' + recText(l.entry), cite: c });
+        else if (rx.id === 'infusion' && pt.flags && pt.flags.dehydrated) out.push({ lvl: 'ok', text: 'Инфузия при обезвоживании необходима: восполнить жидкость, натрий и калий.' });
         else if (item.kind !== 'observation') {
           const doms = P.group(pt).domains;
           const e = Math.max.apply(null, doms.map((k) => (item.eff && item.eff[k]) || 0));
@@ -328,19 +330,20 @@
       if (r && oral && !rx.home) {
         let start = r.start;
         if (drug.id === 'lamotrigine' && tags.valproate) start = 12.5;
-        if (start && rx.dose > start * 1.6 && !urgentStart(pt, drug)) out.push({ lvl: 'warn', text: 'Высокая стартовая доза. Начните с ' + fmtDose(start) + ' и титруйте.' + (drug.id === 'lamotrigine' && tags.valproate ? ' С вальпроатом дозы ламотриджина вдвое ниже.' : '') });
+        if (start && rx.dose > start * 1.6 && !urgentStart(pt, drug)) out.push({ lvl: rx.dose > start * 3 ? 'err' : 'warn', text: (rx.dose > start * 3 ? 'Опасно высокая стартовая доза. ' : 'Высокая стартовая доза. ') + 'Начните с ' + fmtDose(start) + ' и титруйте.' + (drug.id === 'lamotrigine' && tags.valproate ? ' С вальпроатом дозы ламотриджина вдвое ниже.' : '') });
       }
       special(s, pt, drug, rx).forEach((m) => out.push(m));
       // 5. Полипрагмазия и сочетания классов
       polypharmacy(pt, drug, rx).forEach((m) => out.push(m));
       // 6. Мониторинг
-      const need = (drug.monitor || []).filter((m) => m.when === 'start' && monitorApplies(pt, m) && !P.recentTest(pt, m.test, 5));
+      const need = (drug.monitor || []).filter((m) => m.when === 'start' && monitorApplies(pt, m) && !P.recentTest(pt, m.test, 14));
       if (need.length) out.push({ lvl: 'info', text: 'Не забудьте: ' + U.list(need.map((m) => (P.TESTS[m.test] || { name: m.test }).name + (m.note ? ' (' + m.note.replace(/\.$/, '') + ')' : ''))) + '.' });
     }
 
     if (kind === 'up' || kind === 'add') {
       if (r && r.max && rx.dose > r.max) out.push({ lvl: 'err', text: (oral ? 'Превышена максимальная суточная доза (' : 'Превышена максимальная доза (') + fmtDose(r.max) + ').' });
-      if (r && r.max && tags.elderly && P.oral(rx.route) && rx.dose > r.max * 0.5 + 0.01 && drug.group !== 'dementia' && drug.group !== 'other') out.push({ lvl: 'warn', text: 'У пожилых — половина обычной дозы и медленная титрация.' });
+      const eMax = drug.elderlyMax || (r && r.max ? r.max * 0.6 : 0);
+      if (eMax && tags.elderly && P.oral(rx.route) && rx.dose > eMax + 0.01 && drug.group !== 'dementia' && drug.group !== 'other') out.push({ lvl: 'warn', text: 'У пожилых дозы ниже: не больше ' + fmtDose(eMax) + ', титрация — медленнее.' });
       if (kind === 'up' && prev != null && drug.titration && drug.titration.maxUpPerDay) {
         const days = Math.max(1, s.day - (rx.changed || rx.since));
         const allowed = drug.titration.maxUpPerDay * days;
@@ -356,7 +359,7 @@
     if (kind === 'add') {
       // 7. Противопоказания и осторожность — по меткам пациента и другим назначениям
       (drug.contra || []).forEach((c) => {
-        if (tags[c.t] && c.t !== drug.id) out.push({ lvl: c.sev === 'moderate' ? 'warn' : 'err', text: cap(P.tagName(c.t)) + ': ' + (c.note || 'противопоказано.') });
+        if (tags[c.t] && c.t !== drug.id) out.push({ lvl: c.sev === 'moderate' ? 'warn' : 'err', major: c.sev !== 'moderate', text: cap(P.tagName(c.t)) + ': ' + (c.note || 'противопоказано.') });
       });
       (drug.caution || []).forEach((c) => {
         if (tags[c.t]) out.push({ lvl: 'info', text: cap(P.tagName(c.t)) + ': ' + (c.note || 'с осторожностью.') });
@@ -372,13 +375,20 @@
       });
       cyp(pt, drug).forEach((m) => out.push(m));
     }
-    if (kind === 'down' && drug.cls === 'bzd' && prev && daysOn(s, rx) > 28 && rx.dose < prev * 0.7)
-      out.push({ lvl: 'warn', text: 'Слишком резкое снижение после длительного приёма: безопаснее 10–25% за шаг, раз в 1–2 недели.' });
+    if (kind === 'down' && drug.cls === 'bzd' && prev && daysOn(s, rx) > 28) {
+      const cut = (prev - rx.dose) / prev;
+      const since = s.day - (rx.lastDown || rx.since);
+      const low = (P.form(drug, rx.route).steps || [rx.dose])[0];
+      if (prev > low * 2 + 0.001 && (cut > 0.5 || (cut > 0.3 && since < 3))) out.push({ lvl: 'warn', text: 'Слишком быстрое снижение после длительного приёма: безопаснее 10–25% за шаг, раз в несколько дней — неделю.' });
+      rx.lastDown = s.day;
+    }
     if (kind === 'down' && r && r.min && P.oral(rx.route) && rx.dose < r.min && day > 3 && P.group(pt).domains.some((k) => (drug.eff[k] || 0) >= 0.3))
       out.push({ lvl: 'info', text: 'Доза ниже терапевтической — эффект ослабнет.' });
     if (kind === 'stop') {
-      if (drug.cls === 'bzd' && daysOn(s, rx) > 28 && !otherBzd(pt, rx))
+      const low = (P.form(drug, rx.route).steps || [rx.dose])[0];
+      if (drug.cls === 'bzd' && daysOn(s, rx) > 28 && !otherBzd(pt, rx) && rx.dose > low * 2 + 0.001)
         out.push({ lvl: 'err', text: 'Резкая отмена бензодиазепина после длительного приёма — синдром отмены вплоть до судорог. Снижайте дозу на 10–25% каждые 1–2 недели.' });
+      else if (drug.cls === 'bzd' && daysOn(s, rx) > 28 && !otherBzd(pt, rx)) out.push({ lvl: 'ok', text: 'Последний шаг постепенной отмены бензодиазепина.' });
       else if (drug.cls === 'bzd' && daysOn(s, rx) > 10) out.push({ lvl: 'info', text: 'Бензодиазепин после приёма дольше полутора недель лучше снижать постепенно.' });
       if ((drug.cls === 'ssri' || drug.cls === 'snri') && (drug.id === 'paroxetine' || drug.id === 'venlafaxine') && daysOn(s, rx) > 14)
         out.push({ lvl: 'info', text: 'Пароксетин и венлафаксин отменяют постепенно: выражен синдром отмены.' });
@@ -423,6 +433,9 @@
       if (acute) out.push({ lvl: 'err', text: (drug.id === 'disulfiram' ? 'Дисульфирам' : 'Цианамид') + ' назначают только после купирования абстиненции и с письменного информированного согласия.', cite: 'КР «Синдром зависимости от алкоголя» (2024)' });
       else out.push({ lvl: 'info', text: 'Нужно письменное информированное согласие: пациент должен понимать, что будет при приёме алкоголя.' });
     }
+    // Пролонгированные формы при шизофрении
+    if (rx.route === 'depot' && drug.group === 'antipsychotic' && pt.group === 'schizophrenia')
+      out.push({ lvl: 'ok', text: 'Пролонгированная форма рекомендована для профилактики рецидивов при длительной терапии.', cite: 'КР «Шизофрения» (2024)' });
     // Тиамин и глюкоза
     if (drug.id === 'thiamine' && tags.alcohol) out.push({ lvl: 'ok', text: 'Тиамин при отмене алкоголя — с первого дня и до глюкозы.', cite: P.GEN });
     // Вальпроат у женщин детородного возраста: тест на беременность
@@ -432,8 +445,11 @@
   function urgentStart(pt, drug) {
     return pt.group === 'alcohol_withdrawal' || pt.group === 'delirium_tremens' || (drug.group === 'anxiolytic' && pt.sev > 70);
   }
+  /** Тот же препарат или его ближайший родственник (рисперидон и палиперидон). */
+  const kin = (a, b) => a === b || ((P.drug(a) || {}).kin || []).indexOf(b) >= 0 || ((P.drug(b) || {}).kin || []).indexOf(a) >= 0;
+  P.kin = kin;
   function hadOral(pt, drug) {
-    return (pt.history || []).some((h) => h.id === drug.id && h.route === 'po') || (pt.rx || []).some((r) => r.id === drug.id && r.route === 'po');
+    return (pt.rx || []).some((r) => kin(r.id, drug.id) && P.oral(r.route)) || (pt.oralTried || []).some((id) => kin(id, drug.id));
   }
   function otherBzd(pt, rx) {
     return (pt.rx || []).some((o) => o !== rx && o.kind !== 'int' && (P.drug(o.id) || {}).cls === 'bzd');
@@ -455,13 +471,13 @@
     const ap = (d) => d.group === 'antipsychotic';
     const ad = (d) => d.group === 'antidepressant';
     if (ap(drug) && rx.route !== 'im') {
-      const apOthers = others.filter((x) => ap(x.d) && x.o.route !== 'im' && !x.o.prn);
+      const apOthers = others.filter((x) => ap(x.d) && x.o.route !== 'im' && !x.o.prn && !kin(x.d.id, drug.id));
       if (apOthers.length) {
         const clozAug = drug.id === 'clozapine' || apOthers.some((x) => x.d.id === 'clozapine');
         out.push({ lvl: clozAug ? 'info' : 'warn', text: clozAug ? 'Комбинация с клозапином допустима только при частичном ответе на клозапин.' : 'Два антипсихотика одновременно — рекомендации требуют монотерапии. Замените, а не добавляйте.' });
       }
     }
-    if (ad(drug) && others.some((x) => ad(x.d))) out.push({ lvl: 'warn', text: 'Два антидепрессанта сразу — без явных показаний это полипрагмазия.' });
+    if (ad(drug) && others.some((x) => ad(x.d) && x.d.id !== drug.id)) out.push({ lvl: 'warn', text: 'Два антидепрессанта сразу — без явных показаний это полипрагмазия.' });
     if (drug.group === 'antidepressant' && (pt.group === 'bipolar_depression' || pt.group === 'mania') && !others.some((x) => x.d.group === 'moodstab' || (x.d.group === 'antipsychotic' && (x.d.eff.mania || 0) >= 0.5)))
       out.push({ lvl: 'err', text: 'Антидепрессант без нормотимика при биполярном расстройстве — риск инверсии в манию.' });
     if (drug.group === 'corrector' && drug.cls === 'anticholinergic' && (pt.sx.eps || 0) < 0.8)
@@ -574,7 +590,7 @@
       (d.monitor || []).forEach((m) => {
         if (!monitorApplies(pt, m)) return;
         const last = lastTestDay(pt, m.test);
-        if (m.when === 'start' && !(last >= rx.since - 3)) add(m.test, d.name + ': ' + (m.note || 'контроль в начале терапии'), on > 3);
+        if (m.when === 'start' && !(last >= rx.since - 14)) add(m.test, d.name + ': ' + (m.note || 'контроль в начале терапии'), on > 3);
         if (m.when === 'week') {
           const ref = last >= rx.since - 3 ? last : rx.since;
           if (s.day - ref >= 7 && on >= 6) add(m.test, d.name + ': ' + (m.note || 'еженедельный контроль'), s.day - ref > 10);
