@@ -31,6 +31,7 @@
       '<div class="cover-btns">' +
       (save ? '<button type="button" class="btn primary" data-act="continue">Продолжить</button>' : '') +
       '<button type="button" class="btn' + (save ? '' : ' primary') + '" data-act="new">Новая игра</button>' +
+      '<button type="button" class="btn ghost" data-act="refs-open">Справочники</button>' +
       '<button type="button" class="btn ghost" data-act="about">Об игре</button>' +
       '</div>' +
       '<p class="cover-note">' +
@@ -40,9 +41,48 @@
     );
   };
 
+  /* ---------- Выбор режима ---------- */
+  S.mode = function () {
+    const art = { full: 'lecture', doctor: 'office' };
+    const cards = Object.keys(D.modes)
+      .map((k) => {
+        const m = D.modes[k];
+        return (
+          '<button type="button" class="mode-card" data-act="mode-pick" data-arg="' + k + '">' +
+          '<span class="mode-art" aria-hidden="true">' + A.art.scene(art[k] || 'street', { slot: k === 'doctor' ? 1 : 0, season: 'autumn', seed: 11 }) + '</span>' +
+          '<span class="mode-body"><span class="eyebrow">' + U.esc(m.eyebrow) + '</span>' +
+          '<span class="mode-t">' + U.esc(m.name) + '</span>' +
+          '<span class="mode-d">' + U.esc(m.desc) + '</span></span>' +
+          '</button>'
+        );
+      })
+      .join('');
+    return (
+      '<main class="wrap create">' +
+      '<header class="create-head"><span class="eyebrow">Новая игра</span><h1 class="display">С чего начнём?</h1></header>' +
+      '<div class="mode-grid">' + cards + '</div>' +
+      '<div class="create-btns"><button type="button" class="btn ghost" data-act="mode-back">Назад</button></div>' +
+      '</main>'
+    );
+  };
+  UI.on('mode-pick', (k) => {
+    if (!D.modes[k]) return;
+    const prev = UI.view.create;
+    UI.view.create = Object.assign({ name: 'Саша', gender: 'm', background: 'excellent', dream: 'flat' }, prev || {}, { mode: k });
+    UI.view.screen = 'create';
+    UI.render({ scroll: 'top' });
+  });
+  UI.on('mode-back', () => {
+    UI.view.screen = null;
+    UI.view.create = null;
+    UI.render({ scroll: 'top' });
+  });
+
   /* ---------- Создание персонажа ---------- */
   S.create = function () {
-    const c = UI.view.create || (UI.view.create = { name: 'Саша', gender: 'm', background: 'excellent', dream: 'flat' });
+    const c = UI.view.create || (UI.view.create = { name: 'Саша', gender: 'm', background: 'excellent', dream: 'flat', mode: 'full' });
+    const mode = D.modes[c.mode] ? c.mode : 'full';
+    const doc = mode === 'doctor';
     const f = c.gender === 'f';
     const bgCards = Object.keys(D.backgrounds)
       .map((k) => {
@@ -52,6 +92,7 @@
           '<span class="pick-t">' + b.name[f ? 1 : 0] + '</span>' +
           '<span class="pick-d">' + U.esc(b.desc.replace(/\{([^{}|]*)\|([^{}|]*)\}/g, (m, a, bb) => (f ? bb : a))) + '</span>' +
           '<span class="pick-p">' + U.esc(b.perk) + '</span>' +
+          (doc && b.doctor ? '<span class="pick-p doc">' + U.esc(b.doctor.note) + '</span>' : '') +
           '</button>'
         );
       })
@@ -64,16 +105,17 @@
       .join('');
     return (
       '<main class="wrap create">' +
-      '<header class="create-head"><span class="eyebrow">Личная карточка ординатора</span><h1 class="display">Кто ты?</h1></header>' +
+      '<header class="create-head"><span class="eyebrow">' + U.esc(D.modes[mode].card) + '</span><h1 class="display">Кто ты?</h1>' +
+      '<p class="mode-line">Режим: <b>' + U.esc(D.modes[mode].name) + '</b> · <button type="button" class="link" data-act="cr-mode">сменить</button></p></header>' +
       '<div class="create-portrait">' + A.art.portrait(S.playerLook(c.name, c.gender), 'smile', { seed: 3 }) + '</div>' +
       '<label class="field" for="pname"><span class="label">Имя</span><input id="pname" name="pname" maxlength="24" value="' + U.esc(c.name) + '" autocomplete="off" spellcheck="false"></label>' +
       '<div class="field"><span class="label">Как к тебе обращаться</span><div class="seg" role="group">' +
       '<button type="button" data-act="cr-gender" data-arg="m" aria-pressed="' + !f + '">Он</button>' +
       '<button type="button" data-act="cr-gender" data-arg="f" aria-pressed="' + f + '">Она</button>' +
       '</div></div>' +
-      '<div class="field"><span class="label">Предыстория</span><div class="pick-grid">' + bgCards + '</div></div>' +
+      '<div class="field"><span class="label">Предыстория' + (doc ? ' — от неё зависят оценки в дипломе' : '') + '</span><div class="pick-grid">' + bgCards + '</div></div>' +
       '<div class="field"><span class="label">Мечта — цель игры</span><div class="pick-grid">' + dreamCards + '</div></div>' +
-      '<div class="create-btns"><button type="button" class="btn primary wide" data-act="cr-start">Начать семестр</button><button type="button" class="btn ghost" data-act="cr-back">Назад</button></div>' +
+      '<div class="create-btns"><button type="button" class="btn primary wide" data-act="cr-start">' + U.esc(D.modes[mode].start) + '</button><button type="button" class="btn ghost" data-act="cr-back">Назад</button></div>' +
       '</main>'
     );
   };
@@ -104,7 +146,13 @@
     UI.render();
   });
   UI.on('cr-back', () => {
-    UI.view.screen = null;
+    UI.view.screen = 'mode';
+    UI.render({ scroll: 'top' });
+  });
+  UI.on('cr-mode', () => {
+    const inp = document.getElementById('pname');
+    if (inp && UI.view.create) UI.view.create.name = inp.value;
+    UI.view.screen = 'mode';
     UI.render({ scroll: 'top' });
   });
   UI.on('cr-start', () => {
@@ -113,7 +161,7 @@
     if (inp) c.name = inp.value;
     A.state = G.newState(c);
     A.store.wipe();
-    G.queue(A.state, [{ type: 'story', story: 'prologue_home' }, { type: 'story', story: 'prologue_dept' }], 'prologue');
+    G.queue(A.state, G.prologue(A.state), 'prologue');
     G.say(A.state, G.morningText(A.state), 'morning');
     G.save();
     A.store.checkpoint(A.state);
@@ -130,6 +178,7 @@
       '<div class="prose">' +
       U.md(
         'Текстовая RPG о последнем семестре ординатуры по психиатрии и первом годе самостоятельной работы.\n\n' +
+          '**Режимы.** «Полный путь» — с последнего семестра ординатуры: учёба, практика в отделении, ГИА, диплом и аккредитация, потом работа. «Старт с врача» — диплом и аккредитация уже есть, игра начинается с выбора работы.\n\n' +
           '**Учёба.** Утром — лекции профессора Корсаковой с блиц-опросом, днём — семинары у доцента Кандинского: беседа с пациентом, психический статус, синдром, диагноз по МКБ-10 и тактика. Пропуски отрабатываются, без отработок к сессии не допустят.\n\n' +
           '**Сессия.** Два экзамена с ситуационными задачами и аккредитация: тест плюс клиническая задача.\n\n' +
           '**Жизнь.** Аренда, еда, сон, стресс и выгорание. Подработки: ночные смены в больнице, курьерство, репетиторство, медкомиссии, онлайн-консультации. Знания дают подсказки «клинического чутья», усталость — отнимает вопросы к пациенту.\n\n' +
@@ -158,7 +207,7 @@
         A.boot.save = A.state;
       }
       UI.view.create = null;
-      UI.view.screen = 'create';
+      UI.view.screen = 'mode';
       A.state = null;
       UI.render({ scroll: 'top' });
     };
@@ -190,22 +239,23 @@
       })
       .join('');
     const stat = (l, v) => '<div class="stat"><span>' + l + '</span><b>' + v + '</b></div>';
-    const row = (name, grade, day, sign) => '<tr><td>' + name + '</td><td class="hand grade">' + (grade || '') + '</td><td class="mono dim">' + (day ? C.fmtDate(day) : '') + '</td><td class="hand sign">' + (sign || '') + '</td></tr>';
+    const row = (name, grade, when, sign) => '<tr><td>' + name + '</td><td class="hand grade">' + (grade || '') + '</td><td class="mono dim">' + (when || '') + '</td><td class="hand sign">' + (sign || '') + '</td></tr>';
     const pr = s.ward && s.ward.practice;
     const exams = ['exam1', 'practice', 'exam2', 'accr']
       .map((k) => {
         if (k === 'practice') {
           if (!pr || !pr.closed) return row('Практика', '', null, '');
-          return row('Практика', pr.grade >= 3 ? A.exams.gradeShort(pr.grade) : 'н/з', W_TO(), pr.grade >= 3 ? 'Кандинский' : '');
+          return row('Практика', pr.grade >= 3 ? A.exams.gradeShort(pr.grade) : 'н/з', pr.pre ? pr.date : C.fmtDate(W_TO()), pr.grade >= 3 ? 'Кандинский' : '');
         }
         const r = s.study.exams[k];
         const def = A.exams.defs[k];
         const examiner = def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : def.examiner === 'gek' ? 'ГЭК' : 'Подкомиссия';
         const g = r ? (def.passFail ? (r.grade >= 3 ? 'сдано' : 'не сдано') : A.exams.gradeShort(r.grade) + (r.automat ? ' (авт.)' : '')) : '';
-        return row(def.short, g, r ? r.lastDay : null, r && r.grade >= 3 ? examiner : '');
+        return row(def.short, g, r ? G.when(r.lastDay, r.date) : '', r && r.grade >= 3 ? examiner : '');
       })
       .join('');
-    const achs = Object.keys(D.achievements)
+    const achKeys = Object.keys(D.achievements).filter((k) => !(D.achievements[k].study && s.mode === 'doctor'));
+    const achs = achKeys
       .map((k) => {
         const a = D.achievements[k];
         const got = s.ach[k];
@@ -249,7 +299,7 @@
       '<section class="card zachetka"><h2 class="h2">Зачётная книжка</h2><div class="table-wrap"><table><thead><tr><th>Дисциплина</th><th>Оценка</th><th>Дата</th><th>Подпись</th></tr></thead><tbody>' + exams + '</tbody></table></div>' +
       (s.phase === 'study' ? '<p class="small dim">Рейтинг семестра: ' + (s.study.ratingMax ? Math.round((s.study.rating / s.study.ratingMax) * 100) : 0) + '%. С 85% и без долгов — шанс на «автомат».</p>' : '') +
       '</section>' +
-      '<section class="card"><h2 class="h2">Достижения · ' + Object.keys(s.ach).length + ' из ' + Object.keys(D.achievements).length + '</h2><ul class="achs">' + achs + '</ul></section>' +
+      '<section class="card"><h2 class="h2">Достижения · ' + achKeys.filter((k) => s.ach[k]).length + ' из ' + achKeys.length + '</h2><ul class="achs">' + achs + '</ul></section>' +
       '</main>' +
       UI.tabbar('profile')
     );
@@ -282,8 +332,7 @@
       .map((t) => '<button type="button" class="tab" role="tab" data-act="ref-tab" data-arg="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + t[1] + '</button>')
       .join('');
     let body = '';
-    if (tab === 'notes') body = S.notes(s);
-    else if (tab === 'gloss') body = '<label class="field" for="gloss-filter"><span class="label">Поиск по симптомам</span><input id="gloss-filter" type="search" value="' + U.esc(UI.view.glossFilter || '') + '" placeholder="например, бред"></label><div id="gloss-list">' + S.glossList(UI.view.glossFilter || '') + '</div>';
+    if (tab === 'notes' || tab === 'gloss') body = S.refCommon(s, tab);
     else if (tab === 'patients') body = S.patients(s);
     else if (tab === 'drugs') body = UI.ward.drugsRef(s);
     else if (tab === 'kr') body = UI.ward.krRef(s);
@@ -296,11 +345,61 @@
     UI.view.refItem = null;
     UI.render();
   });
+  /** Разделы справочника, которым не нужна игра: доступны и с титульного экрана. */
+  S.refCommon = function (s, tab) {
+    if (tab === 'notes') return S.notes(s);
+    if (tab === 'gloss') return '<label class="field" for="gloss-filter"><span class="label">Поиск по симптомам</span><input id="gloss-filter" type="search" value="' + U.esc(UI.view.glossFilter || '') + '" placeholder="например, бред"></label><div id="gloss-list">' + S.glossList(UI.view.glossFilter || '') + '</div>';
+    if (tab === 'drugs') return UI.ward.drugsRef(s);
+    if (tab === 'kr') return UI.ward.krRef(s);
+    return '';
+  };
+
+  /* ---------- Справочники с титульного экрана (без игры) ---------- */
+  const REFS_TABS = [
+    ['drugs', 'Препараты'],
+    ['kr', 'Клинические рекомендации'],
+    ['gloss', 'Симптомы'],
+    ['notes', 'Конспекты'],
+  ];
+  S.refs = function () {
+    const tab = REFS_TABS.some((t) => t[0] === UI.view.refsTab) ? UI.view.refsTab : 'drugs';
+    const tabs = REFS_TABS.map((t) => '<button type="button" class="tab" role="tab" data-act="refs-tab" data-arg="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + t[1] + '</button>').join('');
+    return (
+      '<main class="wrap ref refs-home">' +
+      '<header class="create-head"><span class="eyebrow">Анамнез</span><h1 class="display">Справочники</h1>' +
+      '<p class="dim">Препараты, клинические рекомендации Минздрава России, симптомы и конспекты лекций — можно читать, не начиная игру.</p></header>' +
+      '<div class="tabs" role="tablist">' + tabs + '</div>' +
+      '<div class="folder pad">' + S.refCommon(null, tab) + '</div>' +
+      '<div class="create-btns"><button type="button" class="btn ghost" data-act="refs-back">На титульный экран</button></div>' +
+      '</main>'
+    );
+  };
+  UI.on('refs-open', () => {
+    UI.view.screen = 'refs';
+    UI.view.refItem = null;
+    UI.render({ scroll: 'top' });
+  });
+  UI.on('refs-tab', (t) => {
+    UI.view.refsTab = t;
+    UI.view.refItem = null;
+    UI.render();
+  });
+  UI.on('refs-back', () => {
+    UI.view.screen = null;
+    UI.view.refItem = null;
+    UI.render({ scroll: 'top' });
+  });
+  UI.on('menu-ref', (t) => {
+    UI.view.tab = 'ref';
+    UI.view.ref = t;
+    UI.view.refItem = null;
+    UI.render({ scroll: 'top' });
+  });
 
   S.notes = function (s) {
     return D.lectures
       .map((L) => {
-        const open = s.study.lectures[L.id] || s.phase === 'career' || s.phase === 'graduate';
+        const open = !s || s.study.lectures[L.id] || s.phase === 'career' || s.phase === 'graduate';
         if (!open) return '<div class="note locked"><span class="mono dim">№' + L.n + '</span> ' + U.esc(L.title) + ' <span class="chip off">не прослушано</span></div>';
         return (
           '<details class="note"><summary><span class="mono dim">№' + L.n + '</span> ' + U.esc(L.title) + '</summary>' +
@@ -377,6 +476,12 @@
     return (
       UI.hud(s) +
       '<main class="wrap menu"><h1 class="display page-h">Меню</h1>' +
+      '<section class="card"><h2 class="h2">Справочники</h2><p class="dim small">Препараты с дозами, противопоказаниями и взаимодействиями, клинические рекомендации Минздрава, симптомы и конспекты лекций.</p><div class="row-btns">' +
+      '<button type="button" class="btn" data-act="menu-ref" data-arg="drugs">Препараты</button>' +
+      '<button type="button" class="btn" data-act="menu-ref" data-arg="kr">Клинические рекомендации</button>' +
+      '<button type="button" class="btn ghost" data-act="menu-ref" data-arg="gloss">Симптомы</button>' +
+      '<button type="button" class="btn ghost" data-act="menu-ref" data-arg="notes">Конспекты</button>' +
+      '</div></section>' +
       '<section class="card"><h2 class="h2">Сохранение</h2><p class="dim">' +
       (cloud === 'on'
         ? 'Игра сохраняется автоматически: в этом браузере и в вашем личном облачном разделе Claude.'
@@ -390,7 +495,7 @@
       '</section>' +
       '<section class="card"><h2 class="h2">Чекпоинт</h2><p class="dim">Каждый понедельник игра запоминает начало недели. ' + (cp ? 'Последний: ' + C.fmt(cp.day) + '.' : '') + '</p><div class="row-btns"><button type="button" class="btn" data-act="load-cp"' + (cp ? '' : ' aria-disabled="true"') + '>Вернуться к началу недели</button></div></section>' +
       '<section class="card"><h2 class="h2">Чтение</h2><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + !!prefs.bigText + '">' + (prefs.bigText ? 'Обычный текст' : 'Крупный текст') + '</button></div></section>' +
-      '<section class="card"><h2 class="h2">Игра</h2><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
+      '<section class="card"><h2 class="h2">Игра</h2><p class="dim small">Режим: ' + U.esc((D.modes[s.mode] || D.modes.full).name) + '.</p><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
       '</main>' +
       UI.tabbar('menu')
     );

@@ -7,6 +7,7 @@ set -uo pipefail
 
 APKS=${1:-out}
 LABEL=${2:-emulator}
+PLAY_DAYS=${PLAY_DAYS:-8}
 RES="e2e-out/$LABEL"
 PKG=io.github.pozornyk3000.anamnez
 ACT="$PKG/.MainActivity"
@@ -46,6 +47,8 @@ start_watch() {
   BG+=($!)
   "$ADB_BIN" logcat -v time '*:I' > "$RES/logcat-all.txt" 2>&1 &
   BG+=($!)
+  "$ADB_BIN" logcat -b kernel -v time > "$RES/logcat-kernel.txt" 2>&1 &
+  BG+=($!)
 }
 
 # Эмулятор пропал: напечатать, что известно, и сразу закончить (иначе задача висит до тайм-аута)
@@ -65,6 +68,10 @@ gone_check() {
   if [ -s "$RES/logcat-all.txt" ]; then
     echo "--- журнал устройства перед падением"
     grep -E " [EF]/|lowmemorykiller|lmkd|am_kill|Killing |ANR in|FATAL|Fatal signal|AnamnezWeb" "$RES/logcat-all.txt" | tail -40 | cut -c1-240
+  fi
+  if [ -s "$RES/logcat-kernel.txt" ]; then
+    echo "--- ядро устройства (последние строки)"
+    tail -25 "$RES/logcat-kernel.txt" | cut -c1-240
   fi
   echo
   echo "[$LABEL] Проверки прерваны: эмулятор не отвечает."
@@ -141,7 +148,7 @@ shot 01-title
 
 step "2. Автоигрок проходит первые дни прямо в приложении"
 start_watch
-timeout 900 node tools/autoplay.cjs - 320 --android "$PKG" --smart --days 8 --shots "$RES/play" 2>&1 | tee "$RES/autoplay.txt"
+timeout 900 node tools/autoplay.cjs - 320 --android "$PKG" --smart --days "$PLAY_DAYS" --shots "$RES/play" 2>&1 | tee "$RES/autoplay.txt"
 [ "${PIPESTATUS[0]}" -eq 0 ] || err "автоигрок нашёл ошибки"
 gone_check
 echo "память по ходу игры:"

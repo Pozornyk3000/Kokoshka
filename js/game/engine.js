@@ -27,6 +27,7 @@
         background: opt.background,
         dream: opt.dream,
       },
+      mode: opt.mode === 'doctor' ? 'doctor' : 'full',
       day: 1,
       slot: 0,
       money: bg.money,
@@ -76,8 +77,42 @@
       ended: null,
       acc: { health: 0 },
     };
+    if (s.mode === 'doctor') G.setupDoctor(s);
     return s;
   };
+
+  /** Режим «Старт с врача»: ординатура позади — диплом, аккредитация и знания выпускника,
+      впереди выбор работы. Оценки в дипломе зависят от предыстории. Даты — прошлого лета. */
+  G.setupDoctor = function (s) {
+    const bg = G.bg(s);
+    const dc = bg.doctor || { grades: { exam1: 4, practice: 4, gia: 4, accr: 4 }, accrPct: 80 };
+    const g = dc.grades;
+    s.phase = 'graduate';
+    D.domainKeys.forEach((k) => (s.know[k] = U.clamp(s.know[k] + 24, 0, 100)));
+    s.money += 18000;
+    s.rep += 6;
+    s.xp = 400;
+    s.stress = 22;
+    s.housing = 'room';
+    const pct = (gr) => (gr >= 5 ? 90 : gr >= 4 ? 78 : 62);
+    const ex = (gr, p, date) => ({ grade: gr, attempts: 1, lastDay: null, date, pct: p });
+    s.study.exams = { exam1: ex(g.exam1, pct(g.exam1), '16 июня'), exam2: ex(g.gia, pct(g.gia), '27 июня'), accr: ex(g.accr, dc.accrPct, '11 июля') };
+    if (s.ward) Object.assign(s.ward.practice, { closed: true, grade: g.practice, pre: true, date: '30 мая' });
+    if (A.exams) {
+      const d = A.exams.issueDiploma(s);
+      d.day = null;
+      d.date = '30 июня';
+    }
+    s.study.accr = { day: null, date: '11 июля', pct: dc.accrPct, testPct: Math.min(100, dc.accrPct + 3) };
+    return s;
+  };
+  /** Начальные сцены новой игры: пролог ординатуры или первый день врача. */
+  G.prologue = function (s) {
+    if (s.mode === 'doctor') return [{ type: 'story', story: 'doctor_home' }, { type: 'story', story: 'doctor_offers' }, { type: 'jobs' }];
+    return [{ type: 'story', story: 'prologue_home' }, { type: 'story', story: 'prologue_dept' }];
+  };
+  /** Дата записи: игровой день или текст (для документов, выданных до начала игры). */
+  G.when = (day, text) => (typeof day === 'number' && day > 0 ? C.fmtDate(day) : text || '');
 
   /* ---------- Справочные функции ---------- */
   G.bg = (s) => D.backgrounds[s.player.background] || D.backgrounds.excellent;

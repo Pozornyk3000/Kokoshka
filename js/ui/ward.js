@@ -810,7 +810,7 @@
     const d = s.study.diploma;
     if (!d) return '';
     const gr = (g) => (g ? A.exams.gradeName(g) : '—');
-    const date = C.fmtDate(d.day);
+    const date = G.when(d.day, d.date);
     return (
       '<section class="diploma">' +
       '<div class="dip-title">' +
@@ -848,7 +848,10 @@
   UI.ward.profileCards = function (s) {
     let out = '';
     const pr = s.ward && s.ward.practice;
-    if (pr && (pr.start || pr.closed)) {
+    if (pr && pr.pre) {
+      out +=
+        '<section class="card"><h2 class="h2">Производственная практика</h2><p class="small">Пройдена в ординатуре, ' + esc(pr.date || '') + ': <b>' + esc(pr.grade >= 3 ? A.exams.gradeName(pr.grade) : 'не зачтено') + '</b>.</p></section>';
+    } else if (pr && (pr.start || pr.closed)) {
       const led = ((s.ward && s.ward.done) || []).filter((x) => x.mode === 'study').length + W.active(s).filter((x) => x.mode === 'study').length;
       const g = pr.closed ? (pr.grade >= 3 ? A.exams.gradeName(pr.grade) : 'не зачтено') : 'идёт';
       out +=
@@ -865,14 +868,14 @@
     if (d) {
       const open = UI.view.diplomaOpen;
       out +=
-        '<section class="card"><h2 class="h2">Диплом об окончании ординатуры</h2><p class="small">' + esc(d.spec) + ' · квалификация «' + esc(d.qual) + '» · № ' + esc(d.number) + ', выдан ' + C.fmtDate(d.day) + '.</p>' +
+        '<section class="card"><h2 class="h2">Диплом об окончании ординатуры</h2><p class="small">' + esc(d.spec) + ' · квалификация «' + esc(d.qual) + '» · № ' + esc(d.number) + ', выдан ' + esc(G.when(d.day, d.date)) + '.</p>' +
         '<button type="button" class="link" data-act="diploma-open">' + (open ? 'Свернуть' : 'Открыть диплом') + '</button>' +
         (open ? UI.ward.diplomaDoc(s) : '') +
         '</section>';
     }
     if (s.study.accr) {
       out +=
-        '<section class="card"><h2 class="h2">Аккредитация</h2><p class="small">Первичная специализированная аккредитация по специальности «Психиатрия» — <b>сдано</b>, ' + C.fmtDate(s.study.accr.day) + (s.study.accr.testPct != null ? ' (тестирование — ' + s.study.accr.testPct + '%)' : '') + '.</p>' +
+        '<section class="card"><h2 class="h2">Аккредитация</h2><p class="small">Первичная специализированная аккредитация по специальности «Психиатрия» — <b>сдано</b>, ' + esc(G.when(s.study.accr.day, s.study.accr.date)) + (s.study.accr.testPct != null ? ' (тестирование — ' + s.study.accr.testPct + '%)' : '') + '.</p>' +
         '<p class="small dim">Сведения внесены в Федеральный регистр медицинских работников; выписка — на Госуслугах. Следующая аккредитация — периодическая, через 5 лет (Положение об аккредитации специалистов, приказ Минздрава России от 28.10.2022 № 709н).</p></section>';
     }
     return out;

@@ -111,7 +111,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [30, 35]
+        # days — сколько игровых дней проходит автоигрок. На Android 15 эмулятор в CI зависает и падает
+        # примерно через 3,5 минуты под непрерывной нагрузкой (и в режиме swiftshader_indirect, и в swiftshader),
+        # поэтому там автоигра короче; полная — на Android 11 и в браузерной проверке.
+        include:
+          - api: 30
+            days: 8
+          - api: 35
+            days: 2
     steps:
       - uses: actions/checkout@v4
 
@@ -145,7 +152,7 @@ jobs:
           # swiftshader_indirect устарел с эмулятора 36.4.9 (и на Android 15 эмулятор с ним падал через ~3 минуты),
           # поддерживаемый программный режим — swiftshader
           emulator-options: -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -no-snapshot -no-metrics
-          script: bash tools/android-e2e.sh out api${{ matrix.api }}
+          script: PLAY_DAYS=${{ matrix.days }} bash tools/android-e2e.sh out api${{ matrix.api }}
 
       - name: Скриншоты в журнал
         if: always() && github.event_name == 'workflow_dispatch' && inputs.shots

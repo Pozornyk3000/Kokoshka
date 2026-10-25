@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Автоигрок: проходит игру через интерфейс в headless Chromium и ловит ошибки.
-   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart]
+   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart] [--mode full|doctor]
    Внутри приложения Android (отладочная сборка на устройстве или эмуляторе, подключённом через adb):
    node tools/autoplay.cjs - 300 --android io.github.pozornyk3000.anamnez --smart
    К уже запущенному Chromium по DevTools: --cdp http://127.0.0.1:9222 */
@@ -21,6 +21,7 @@ const maxSteps = +(argv[1] && !argv[1].startsWith('--') ? argv[1] : 600);
 const shots = flag('--shots', null);
 const seed = +flag('--seed', 1);
 const maxDays = +flag('--days', 999);
+const mode = flag('--mode', 'full');
 if (shots) fs.mkdirSync(shots, { recursive: true });
 // На устройстве печатаем ход игры по мере прохождения: если эмулятор упадёт, в журнале будет видно, где
 const progress = argv.includes('--android') || argv.includes('--progress');
@@ -99,6 +100,8 @@ const cdp = flag('--cdp', null) || androidPkg;
   await shot('00-title');
   await click('[data-act="new"]');
   await click('[data-act="confirm-yes"]');
+  await shot('01-mode');
+  await click('[data-act="mode-pick"][data-arg="' + mode + '"]');
   await shot('01-create');
   await click('[data-act="cr-bg"][data-arg="orderly"]');
   await click('[data-act="cr-start"]');

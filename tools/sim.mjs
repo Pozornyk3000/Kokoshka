@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Быстрая симуляция игры без интерфейса: проверка движка и баланса экономики.
-   node tools/sim.mjs [дней=160] [--skill 0.75] [--seed 1] [--job hospital] [--bg orderly] [--stub stub-data.js] [--quiet] */
+   node tools/sim.mjs [дней=160] [--skill 0.75] [--seed 1] [--job hospital] [--bg orderly] [--mode full|doctor] [--stub stub-data.js] [--quiet] */
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -15,6 +15,7 @@ const seed = +flag('--seed', 1);
 const jobPref = flag('--job', 'hospital');
 const bgPref = flag('--bg', 'orderly');
 const dream = flag('--dream', 'flat');
+const mode = flag('--mode', 'full');
 const stub = flag('--stub', null);
 const quiet = argv.includes('--quiet');
 
@@ -45,8 +46,8 @@ const CS = A.cases;
 D.index();
 A.migrate = (s) => s;
 
-const s = (A.state = G.newState({ name: 'Тест', gender: 'f', background: bgPref, dream }));
-G.queue(s, [{ type: 'story', story: 'prologue_home' }], 'prologue');
+const s = (A.state = G.newState({ name: 'Тест', gender: 'f', background: bgPref, dream, mode }));
+G.queue(s, G.prologue(s), 'prologue');
 
 const chance = (p) => rand() < p;
 function solveCase(c, mode, exam) {

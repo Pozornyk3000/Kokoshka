@@ -22,6 +22,8 @@
     if (!app) return;
     let html;
     if (UI.view.screen === 'create') html = UI.screens.create();
+    else if (UI.view.screen === 'mode') html = UI.screens.mode();
+    else if (UI.view.screen === 'refs') html = UI.screens.refs();
     else if (UI.view.screen === 'about') html = UI.screens.about();
     else if (!s) html = UI.screens.title();
     else if (s.activity) html = UI.act.render(s);
@@ -359,7 +361,17 @@
       UI.render();
       return true;
     }
-    if (v.screen === 'about' || v.screen === 'create') {
+    if (v.screen === 'create') {
+      v.screen = 'mode';
+      UI.render({ scroll: 'top' });
+      return true;
+    }
+    if (v.screen === 'refs' && v.refItem != null) {
+      v.refItem = null;
+      UI.render();
+      return true;
+    }
+    if (v.screen === 'about' || v.screen === 'mode' || v.screen === 'refs') {
       v.screen = null;
       UI.render({ scroll: 'top' });
       return true;

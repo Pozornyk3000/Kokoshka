@@ -1056,6 +1056,69 @@ main.wrap {
   gap: 8px;
   margin-top: 22px;
 }
+.pick-p.doc {
+  font-family: var(--f-text);
+  font-size: 13px;
+  color: var(--ink-2);
+  border-top: 1px dashed var(--rule);
+  padding-top: 6px;
+}
+.mode-line {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* ---------- Выбор режима ---------- */
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.mode-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  color: inherit;
+  font: inherit;
+}
+.mode-card:hover,
+.mode-card:focus-visible {
+  border-color: var(--stamp);
+}
+.mode-art {
+  display: block;
+  aspect-ratio: 16 / 7;
+  overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+}
+.mode-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mode-body {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+.mode-t {
+  font-family: var(--f-display);
+  font-size: 26px;
+  line-height: 1.1;
+}
+.mode-d {
+  color: var(--ink-2);
+  font-size: 15px;
+}
 
 /* ---------- Карточки и таблицы ---------- */
 .card {

@@ -51,11 +51,15 @@ const MOCK = `
   // Новая игра → сохранение уходит в «файлы» приложения
   await click('[data-act="new"]');
   if (await page.$('[data-act="confirm-yes"]')) await click('[data-act="confirm-yes"]');
-  // «Назад» с экрана создания персонажа возвращает на титул
+  // «Назад»: создание персонажа → выбор режима → титул
+  await click('[data-act="mode-pick"][data-arg="full"]');
   if (!(await ev(() => window.A.ui.back()))) fail('back() на экране создания вернул false');
-  if (await ev(() => window.A.ui.view.screen)) fail('back() не закрыл экран создания');
+  if ((await ev(() => window.A.ui.view.screen)) !== 'mode') fail('back() с экрана создания не вернул к выбору режима');
+  if (!(await ev(() => window.A.ui.back()))) fail('back() на выборе режима вернул false');
+  if (await ev(() => window.A.ui.view.screen)) fail('back() не закрыл выбор режима');
   await click('[data-act="new"]');
   if (await page.$('[data-act="confirm-yes"]')) await click('[data-act="confirm-yes"]');
+  await click('[data-act="mode-pick"][data-arg="full"]');
   await click('[data-act="cr-start"]');
   const log1 = await ev(() => window.__bridgeLog.slice());
   if (!log1.includes('set:anamnez.save.v1')) fail('сохранение не записано через мост: ' + log1.join(','));
@@ -105,7 +109,7 @@ const MOCK = `
   await click('[data-act="tab"][data-arg="menu"]');
   await click('[data-act="new"]');
   await click('[data-act="confirm-yes"]');
-  if (!(await ev(() => window.A.ui.back()))) fail('back() на экране создания вернул false');
+  if (!(await ev(() => window.A.ui.back()))) fail('back() на выборе режима вернул false');
   if (!(await page.$('[data-act="continue"]'))) fail('после отказа от новой игры нет «Продолжить»');
   else {
     await click('[data-act="continue"]');
