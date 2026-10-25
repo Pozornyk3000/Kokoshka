@@ -72,7 +72,7 @@
       se: { sexual: 2, activation: 1, serotonergic: 1, hyponatremia: 1, qt: 1 },
       cyp: { sub: ['2C19', '3A4'], inh: {}, ind: {} },
       flags: ['serotonergic'],
-      contra: [{ t: 'qt_long', sev: 'moderate', note: 'удлиняет QT дозозависимо.' }],
+      contra: [{ t: 'qt_long', sev: 'major', note: 'удлиняет QT дозозависимо — при известном удлинении QT противопоказан.' }],
       caution: [{ t: 'elderly', note: 'после 65 лет — не выше 10 мг/сут, контроль натрия.' }, { t: 'omeprazole', note: 'омепразол (ингибитор CYP2C19) повышает концентрацию эсциталопрама — не выше 10 мг и ЭКГ.' }].concat(BLEED),
       monitor: [SSRI_ELDERLY_NA],
       aka: 'Ципралекс, Селектра',

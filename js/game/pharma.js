@@ -138,6 +138,15 @@
     if (!g || !g.title) return '';
     return 'КР «' + g.title + '»' + (g.year ? ', ' + g.year : '') + (g.id ? ', ID ' + g.id : '') + (g.by ? '. ' + g.by : '');
   };
+  /** Стандарт относится к пациенту, только если совпадает код МКБ (745н — для F33, не для первого эпизода F32). */
+  P.standardFor = function (pt, g) {
+    g = g || P.gl(pt);
+    if (!g || !g.standard) return null;
+    const icd = g.standard.icd;
+    if (!icd || !icd.length) return g.standard;
+    const dx = String((pt && pt.dx) || '');
+    return icd.some((c) => dx.indexOf(c) === 0) ? g.standard : null;
+  };
   P.phase = function (pt) {
     const g = P.gl(pt);
     const has = (k) => g && g.phases && g.phases[k];

@@ -402,7 +402,8 @@
     if ((pt.intolerant || []).length) out += '<p class="small"><b>Плохо переносил' + W.pv(pt, '', 'а') + ':</b> ' + pt.intolerant.map((id) => esc((P.drug(id) || { name: id }).name.toLowerCase())).join(', ') + '.</p>';
     if ((pt.failed || []).length) out += '<p class="small"><b>Ранее неэффективно в адекватной дозе:</b> ' + pt.failed.map((id) => esc((P.drug(id) || { name: id }).name.toLowerCase())).join(', ') + '.</p>';
     const g = P.gl(pt);
-    if (g) out += '<p class="small dim">Опора для лечения: ' + esc(P.citeFull(g)) + (g.standard ? '; ' + esc(g.standard.title) + ' (' + esc(g.standard.order) + ')' : '') + '. Подробно — во вкладке «КР» справочника.</p>';
+    const std = P.standardFor(pt, g);
+    if (g) out += '<p class="small dim">Опора для лечения: ' + esc(P.citeFull(g)) + (std ? '; ' + esc(std.title) + ' (' + esc(std.order) + ')' : '') + '. Подробно — во вкладке «КР» справочника.</p>';
     return out;
   }
 
@@ -505,7 +506,8 @@
         '</ul>';
     if (tpl.pitfall) out += '<h2 class="step-h">В чём был подвох</h2><div class="prose">' + mdFill(pt, tpl.pitfall) + '</div>';
     if (tpl.ideal) out += '<div class="pearl plain"><span class="eyebrow">Как вести по клиническим рекомендациям</span>' + mdFill(pt, tpl.ideal) + '</div>';
-    if (g) out += '<p class="small dim">' + esc(P.citeFull(g)) + (g.standard ? '. ' + esc(g.standard.title) + ', ' + esc(g.standard.order) : '') + '.</p>';
+    const std = P.standardFor(pt, g);
+    if (g) out += '<p class="small dim">' + esc(P.citeFull(g)) + (std ? '. ' + esc(std.title) + ', ' + esc(std.order) : '') + '.</p>';
     out += '</section><div class="next-row">' + btn('К списку пациентов', 'wd-sum-close', null, 'primary wide') + '</div>';
     return out;
   }
@@ -761,7 +763,7 @@
       out += '<div class="pt-row"><button type="button" class="pt-head" data-act="ref-kr" data-arg="' + k + '" aria-expanded="' + isOpen + '"><span><b>' + esc(P.GROUPS[k].name) + '</b><br><span class="dim small">КР «' + esc(g.short || g.title) + '»' + (g.year ? ', ' + g.year : '') + (g.id ? ' · ID ' + g.id : '') + '</span></span><span aria-hidden="true">' + (isOpen ? '−' : '+') + '</span></button>';
       if (isOpen) {
         out += '<div class="pt-body"><p class="small">' + esc(P.citeFull(g)) + '.</p>';
-        if (g.standard) out += '<p class="small"><b>Стандарт:</b> ' + esc(g.standard.title) + ', ' + esc(g.standard.order) + '.</p>';
+        if (g.standard) out += '<p class="small"><b>Стандарт:</b> ' + esc(g.standard.title) + ', ' + esc(g.standard.order) + (g.standard.icd ? ' (' + esc(g.standard.icd.join(', ')) + ')' : '') + '.</p>';
         out += '<ul class="kr-key">' + (g.key || []).map((x) => '<li>' + esc(x.t) + (x.uur ? ' <span class="chip">УУР ' + esc(x.uur) + (x.udd ? ', УДД ' + esc(x.udd) : '') + '</span>' : '') + (x.gen ? ' <span class="chip off">общий принцип</span>' : '') + '</li>').join('') + '</ul></div>';
       }
       out += '</div>';
