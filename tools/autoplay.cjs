@@ -108,7 +108,8 @@ const cdp = flag('--cdp', null) || androidPkg;
       if (!s) return { none: true };
       const act = s.activity;
       const step = act ? act.steps[act.i] : null;
-      return { day: s.day, slot: s.slot, money: s.money, energy: s.energy, stress: s.stress, health: s.health, phase: s.phase, type: step ? step.type : 'hub', stage: step && step.p ? step.p.stage || '' : '', ended: s.ended };
+      const wardView = (p) => (p.summary ? 'summary' : p.sheet ? 'sheet' + (p.sheet.id ? '-drug' : '') : p.open ? 'chart-' + p.tab : 'list');
+      return { day: s.day, slot: s.slot, money: s.money, energy: s.energy, stress: s.stress, health: s.health, phase: s.phase, type: step ? step.type : 'hub', stage: step && step.p ? step.p.stage || (step.type === 'ward' ? wardView(step.p) : '') : '', ended: s.ended };
     });
     if (info.none) {
       errors.push('state is null at step ' + i);
@@ -168,6 +169,102 @@ const cdp = flag('--cdp', null) || androidPkg;
       await click(`[data-act="place"][data-arg="${choice.place}"]`);
       if (!(await click(`[data-act="do"][data-arg="${choice.id}"]`))) errors.push('cannot click action ' + choice.id + ' in ' + choice.place);
       continue;
+    }
+    // Отделение: обойти пациентов, решить срочное, назначить лечение, выписать готовых
+    if (info.type === 'ward') {
+      const smart = argv.includes('--smart');
+      const wa = await page.evaluate((smart) => {
+        const A = window.A;
+        const s = A.state;
+        const step = s.activity.steps[s.activity.i];
+        const p = step.p;
+        if (!p) return null;
+        const cl = (sel) => {
+          const b = Array.from(document.querySelectorAll(sel)).find((x) => x.getAttribute('aria-disabled') !== 'true');
+          if (b) {
+            b.click();
+            return true;
+          }
+          return false;
+        };
+        const W = A.ward;
+        const P = A.pharma;
+        window.__wd = window.__wd && window.__wd.day === s.day ? window.__wd : { day: s.day, seen: {}, acts: {} };
+        if (p.summary) return cl('[data-act="wd-sum-close"]') ? 'wd-sum-close' : null;
+        if (p.sheet) {
+          if (p.sheet.id) return cl('[data-act="wd-sok"]') ? 'wd-sok' : cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+          if (p.sheet.group === 'int') return cl('[data-act="wd-sint"]') ? 'wd-sint' : cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+          const pt = W.byUid(s, p.open);
+          let pickId = null;
+          if (smart && pt) {
+            const g = P.gl(pt);
+            const ph = g && g.phases && (g.phases[P.phase(pt)] || g.phases.acute);
+            const first = ((ph && ph.first) || []).map((e) => (typeof e === 'string' ? { id: e } : e));
+            const cands = A.data.drugs.filter((d) => d.group === p.sheet.group && first.some((e) => (e.id ? e.id === d.id : e.cls ? e.cls === d.cls : e.group === d.group)));
+            if (cands.length) pickId = cands[Math.floor(Math.random() * cands.length)].id;
+          }
+          if (pickId) return cl('[data-act="wd-sdrug"][data-arg="' + pickId + '"]') ? 'wd-sdrug-smart' : null;
+          const opts = Array.from(document.querySelectorAll('[data-act="wd-sdrug"]'));
+          if (opts.length) {
+            opts[Math.floor(Math.random() * opts.length)].click();
+            return 'wd-sdrug';
+          }
+          return cl('[data-act="wd-sclose"]') ? 'wd-sclose' : null;
+        }
+        if (p.open) {
+          const pt = W.byUid(s, p.open);
+          const key = p.open;
+          const did = (window.__wd.acts[key] = window.__wd.acts[key] || {});
+          if (!pt) return cl('[data-act="wd-back"]') ? 'wd-back' : null;
+          if (pt.pending) {
+            const ev = W.EVENTS[pt.pending.k];
+            const best = ev.opts.findIndex((o) => (typeof o.ok === 'function' ? o.ok(s, pt) : o.ok) === true);
+            const i = smart && Math.random() < 0.85 ? best : Math.floor(Math.random() * ev.opts.length);
+            return cl('[data-act="wd-decide"][data-arg="' + i + '"]') ? 'wd-decide' : null;
+          }
+          if (!did.tabs) {
+            did.tabs = 1;
+            const t = ['tests', 'info', 'rx'][Math.floor(Math.random() * 3)];
+            return cl('[data-act="wd-tab"][data-arg="' + t + '"]') ? 'wd-tab' : null;
+          }
+          const due = P.dueTests(s, pt);
+          if (due.length && !did.order && Math.random() < (smart ? 0.9 : 0.5)) {
+            did.order = 1;
+            if (p.tab !== 'tests' && p.tab !== 'today') return cl('[data-act="wd-tab"][data-arg="tests"]') ? 'wd-tab' : null;
+            return cl('[data-act="wd-order"][data-arg="' + due[0].test + '"]') ? 'wd-order' : null;
+          }
+          const drugs = pt.rx.filter((r) => r.kind !== 'int' && !r.home);
+          if (!drugs.length && !did.add) {
+            did.add = 1;
+            if (p.tab !== 'rx') {
+              did.add = 0;
+              return cl('[data-act="wd-tab"][data-arg="rx"]') ? 'wd-tab' : null;
+            }
+            return cl('[data-act="wd-add"][data-arg="drug"]') ? 'wd-add' : null;
+          }
+          if (drugs.length && !did.titr && p.tab === 'rx' && Math.random() < 0.4) {
+            did.titr = 1;
+            const r = drugs[0];
+            const d = P.drug(r.id);
+            const rg = P.range(d, r.route, pt);
+            if (rg && r.dose < rg.min) {
+              const i = pt.rx.indexOf(r);
+              return cl('[data-act="wd-up"][data-arg="' + i + '"]') ? 'wd-up' : null;
+            }
+          }
+          const can = W.canDischarge(s, pt);
+          if (can.ok && pt.sev <= P.group(pt).discharge && !did.dis) {
+            did.dis = 1;
+            return cl('[data-act="wd-discharge"]') ? 'wd-discharge' : null;
+          }
+          window.__wd.seen[key] = 1;
+          return cl('[data-act="wd-back"]') ? 'wd-back' : null;
+        }
+        const next = W.active(s).find((x) => x.mode === p.mode && !window.__wd.seen[x.uid]);
+        if (next) return cl('[data-act="wd-open"][data-arg="' + next.uid + '"]') ? 'wd-open' : null;
+        return cl('[data-act="wd-done"]') ? 'wd-done' : null;
+      }, smart);
+      if (wa) continue;
     }
     // Активности: «умный» режим — знает верные ответы и выбирает их с вероятностью 85%
     if (argv.includes('--smart')) {

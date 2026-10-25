@@ -75,13 +75,85 @@ function solveCase(c, mode, exam) {
   return res;
 }
 
+/** Обход: простая «врачебная» стратегия по карте КР с ошибками в зависимости от умения. */
+function wardRound(st) {
+  const W = A.ward;
+  const P = A.pharma;
+  if (!st.p) st.p = { mode: st.mode, admitted: W.beginRound(s, st.mode).map((x) => x.uid) };
+  const stats = { rx: 0, errs: 0 };
+  W.active(s)
+    .filter((pt) => pt.mode === st.mode)
+    .forEach((pt) => {
+      if (pt.pending) {
+        const ev = W.EVENTS[pt.pending.k];
+        const best = ev.opts.findIndex((o) => (typeof o.ok === 'function' ? o.ok(s, pt) : o.ok) === true);
+        W.decide(s, pt, chance(skill) ? best : Math.floor(rand() * ev.opts.length));
+      }
+      const g = P.gl(pt);
+      const ph = g && g.phases ? g.phases[P.phase(pt)] || g.phases.acute : null;
+      const hasFirst = pt.rx.some((r) => !r.home && P.line(pt, P.item(r)).line === 'first');
+      if (ph && !hasFirst) {
+        let cands = [];
+        (ph.first || []).forEach((e) => {
+          const en = typeof e === 'string' ? { id: e } : e;
+          if (en.id) cands.push(P.int(en.id) ? { kind: 'int', id: en.id } : { kind: 'drug', id: en.id });
+          else (D.drugs || []).forEach((d) => (en.cls ? d.cls === en.cls : d.group === en.group) && cands.push({ kind: 'drug', id: d.id }));
+        });
+        cands = cands.filter((c) => c.kind === 'int' || P.drug(c.id));
+        // без грубых ошибок и с лучшим действием на основной домен
+        const doms = P.group(pt).domains;
+        const score = (c) => (c.kind === 'int' ? 0.3 : Math.max(...doms.map((k) => P.drug(c.id).eff[k] || 0)));
+        const safe = cands.filter((c) => {
+          if (c.kind === 'int') return true;
+          const d = P.drug(c.id);
+          const tags = P.tags(pt);
+          return !(d.contra || []).some((x) => tags[x.t] && x.sev !== 'moderate') && (pt.intolerant || []).indexOf(d.id) < 0 && (pt.failed || []).indexOf(d.id) < 0;
+        });
+        const pool = chance(skill) ? safe.sort((a, b) => score(b) - score(a)).slice(0, 3) : cands;
+        const c = pool[Math.floor(rand() * pool.length)];
+        if (c) {
+          let msgs;
+          if (c.kind === 'int') msgs = W.prescribe(s, pt, { kind: 'int', id: c.id });
+          else {
+            const d = P.drug(c.id);
+            const route = (d.forms.find((f) => f.route === 'po') || d.forms[0]).route;
+            const r = P.range(d, route, pt);
+            const steps = P.form(d, route).steps || [];
+            let dose = r && r.start != null ? r.start : steps[0];
+            if (steps.indexOf(dose) < 0) dose = steps.reduce((a, b) => (Math.abs(b - dose) < Math.abs(a - dose) ? b : a), steps[0]);
+            msgs = W.prescribe(s, pt, { kind: 'drug', id: d.id, route, dose });
+          }
+          stats.rx++;
+          stats.errs += msgs.filter((m) => m.lvl === 'err').length;
+        }
+      }
+      // титрация до терапевтической дозы
+      pt.rx.forEach((r, i) => {
+        if (r.kind === 'int' || r.prn || r.home) return;
+        const d = P.drug(r.id);
+        const rg = P.range(d, r.route, pt);
+        if (rg && r.dose < rg.min && s.day - (r.changed || r.since) >= 3 && chance(skill)) W.stepDose(s, pt, i, 1);
+      });
+      if (chance(skill)) P.dueTests(s, pt).forEach((x) => W.order(s, pt, x.test));
+      if (pt.sev <= P.group(pt).discharge && W.canDischarge(s, pt).ok) W.finish(s, pt, 'discharge');
+    });
+  wardStats.rounds++;
+  wardStats.rx += stats.rx;
+  wardStats.errs += stats.errs;
+  return G.stepDone(W.roundResult(s, st.mode));
+}
+const wardStats = { rounds: 0, rx: 0, errs: 0 };
+
 function resolveStep() {
   const act = s.activity;
   const st = act.steps[act.i];
   switch (st.type) {
     case 'story':
     case 'payslip':
+    case 'diploma':
       return G.stepDone(null);
+    case 'ward':
+      return wardRound(st);
     case 'shop':
       return G.stepDone(null);
     case 'event': {
@@ -220,5 +292,17 @@ while (s.day <= days && !s.ended && guard++ < 20000) {
   }
 }
 console.log('---');
+const pr = (s.ward && s.ward.practice) || {};
+const wd = (s.ward && s.ward.done) || [];
+console.log(`Отделение: обходов ${wardStats.rounds}, назначений ${wardStats.rx}, грубых ошибок ${wardStats.errs}; практика — обходов ${pr.rounds || 0}/${pr.days || 0}, ср. ${pr.avg || 0}, зачёт ${pr.grade}; выписано ${wd.filter((x) => x.how === 'discharge').length} (ср. ${wd.length ? Math.round(wd.reduce((a, x) => a + x.score, 0) / wd.length) : 0}), диплом ${s.study.diploma ? s.study.diploma.number : '—'}, аккредитация ${s.study.accr ? 'да' : 'нет'}`);
 console.log(`Итог: день ${s.day}, фаза ${s.phase}, деньги ${Math.round(s.money)}, реп ${Math.round(s.rep)}, ранг «${G.rank(s).name}», случаев ${s.stats.cases}, верных дз ${s.stats.dxRight}, ночей ${s.stats.nights}, выгораний ${s.burnout.episodes}, экзамены ${JSON.stringify(Object.fromEntries(Object.entries(s.study.exams).map(([k, v]) => [k, v.grade])))}, достижений ${Object.keys(s.ach).length}, сохранение ${(JSON.stringify(s).length / 1024).toFixed(0)} КБ`);
 if (guard >= 20000) console.log('ВНИМАНИЕ: превышен лимит шагов (зацикливание?)');
+if (argv.includes('--ward')) {
+  const P = A.pharma;
+  for (const x of (s.ward && s.ward.done) || []) console.log('  выписка/передача', x.tpl, x.how, x.score, 'дн', x.end - x.admit, 'тяжесть', x.sev0, '→', x.sev, x.rx.map((r) => r.id + ':' + r.dose).join(','));
+  for (const pt of A.ward.active(s)) console.log('  в отделении', pt.tpl, pt.mode, 'день', s.day - pt.admitDay, 'тяжесть', Math.round(pt.sev0), '→', Math.round(pt.sev), pt.rx.map((r) => r.id + ':' + r.dose).join(','), 'события', pt.events.map((e) => e.k).join(','));
+}
+if (argv.includes('--ward')) {
+  console.log('  последний обход: день', s.ward.lastRound, '; сегодня', s.day, '; работа', s.career && s.career.job);
+  for (const pt of A.ward.active(s)) console.log('  выписка возможна?', pt.tpl, JSON.stringify(A.ward.canDischarge(s, pt)), 'pending', pt.pending && pt.pending.k, 'away', JSON.stringify(pt.away));
+}

@@ -195,6 +195,7 @@
     arrhythmia: 'нарушения ритма',
     heart_failure: 'сердечная недостаточность',
     epilepsy: 'эпилепсия',
+    seizure_history: 'судорожные припадки в анамнезе',
     pregnancy: 'беременность',
     breastfeeding: 'грудное вскармливание',
     woman_childbearing: 'женщина детородного возраста',

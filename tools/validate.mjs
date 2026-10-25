@@ -50,7 +50,7 @@ const str = (v, min, max) => typeof v === 'string' && v.trim().length >= (min ||
 const words = (v) => (typeof v === 'string' ? v.trim().split(/\s+/).length : 0);
 const badChars = (v, where) => {
   if (typeof v !== 'string') return;
-  if (/[a-z]{4,}/i.test(v.replace(/(F|G|T|E|X|H|K|O)\d{1,2}(\.\d{1,2})?/g, ''))) warns.push(`${where}: латиница в тексте: «${v.slice(0, 60)}…»`);
+  if (/[a-z]{4,}/i.test(v.replace(/(F|G|T|E|X|H|K|O)\d{1,2}(\.\d{1,2})?/g, '').replace(/CIWA-Ar|NMDA|CYP\w*|ICOCS|CANMAT/g, ''))) warns.push(`${where}: латиница в тексте: «${v.slice(0, 60)}…»`);
   if (/\{[^}|]*\}/.test(v.replace(/\{(P|age|purpose|name)\}/g, '')) && !/\{[^{}|]*\|[^{}|]*\}/.test(v)) errors.push(`${where}: странные фигурные скобки: «${v.slice(0, 60)}»`);
 };
 
@@ -199,6 +199,137 @@ for (const k of Object.keys(D.endings || {})) {
   if (!str(q.q) || !Array.isArray(q.opts) || typeof q.ok !== 'number' || q.ok >= q.opts.length || !str(q.why, 15)) errors.push(`extraTest[${i}]: формат {q, opts, ok, why}`);
 });
 
+/* ---------- Отделение: формуляр, КР, пациенты, тексты ---------- */
+// Модуль фармакологии нужен для групп пациентов и меток (загружаем движок без интерфейса)
+vm.runInContext(fs.readFileSync(path.join(root, 'js/game/pharma.js'), 'utf8'), ctx, { filename: 'pharma.js' });
+const PH = ctx.A.pharma;
+const drugs = D.drugs || [];
+const ints = D.interventions || [];
+if (drugs.length || (D.wardPatients || []).length) {
+  const EFF = ['psychosis', 'mania', 'bipdep', 'depression', 'anxiety', 'ocd', 'ptsd', 'withdrawal', 'bpsd', 'impulsivity', 'sleep', 'eps', 'akathisia', 'craving', 'cognition', 'agitation'];
+  const SEK = ['eps', 'akathisia', 'sedation', 'weight', 'metabolic', 'prolactin', 'qt', 'anticholinergic', 'orthostatic', 'serotonergic', 'seizure', 'hyponatremia', 'agranulocytosis', 'sexual', 'activation', 'hepatotox', 'rash', 'tremor', 'dependence', 'nms'];
+  const GROUPS = PH.GROUP_TABS.map((t) => t[0]).filter((g) => g !== 'int');
+  const drugIds = new Set(drugs.map((d) => d.id));
+  const intIds = new Set(ints.map((x) => x.id));
+  const tagOk = (t) => !!PH.TAG_NAMES[t] || drugIds.has(t);
+  const classes = new Set(drugs.map((d) => d.cls));
+  for (const d of drugs) {
+    const w = `drugs.${d.id}`;
+    seen('drug:' + d.id, w);
+    if (!str(d.name)) errors.push(`${w}: нет name`);
+    if (!GROUPS.includes(d.group)) errors.push(`${w}: неверная группа ${d.group}`);
+    if (!Array.isArray(d.forms) || !d.forms.length) errors.push(`${w}: нет форм выпуска`);
+    for (const f of d.forms || []) {
+      if (!PH.ROUTES[f.route]) errors.push(`${w}: неизвестный путь ${f.route}`);
+      if (!Array.isArray(f.steps) || !f.steps.length) errors.push(`${w}: форма ${f.route} без шагов дозы`);
+      else if (f.steps.some((x, i) => i && x <= f.steps[i - 1])) errors.push(`${w}: шаги дозы ${f.route} не по возрастанию`);
+      if (f.range) {
+        if (!(f.range.start <= f.range.max && f.range.min <= f.range.max)) errors.push(`${w}: странный диапазон формы ${f.route}`);
+        if (f.steps && f.range.start != null && f.steps.indexOf(f.range.start) < 0) warns.push(`${w}: стартовая доза ${f.range.start} не совпадает с шагом формы ${f.route}`);
+      }
+    }
+    for (const k of Object.keys(d.doses || {})) {
+      const r = d.doses[k];
+      if (!EFF.includes(k)) errors.push(`${w}: неизвестный домен доз ${k}`);
+      if (!(r.start <= r.max && r.min <= r.max && r.start > 0)) errors.push(`${w}: странные дозы для ${k}`);
+      const po = (d.forms || []).find((f) => f.route === 'po' || f.route === 'sl');
+      if (po && po.steps.indexOf(r.start) < 0) warns.push(`${w}: стартовая доза ${k}=${r.start} не совпадает с шагами таблеток`);
+      if (po && r.max > po.steps[po.steps.length - 1] + 1e-9) warns.push(`${w}: максимум ${k}=${r.max} больше последнего шага таблеток`);
+    }
+    for (const k of Object.keys(d.eff || {})) if (!EFF.includes(k)) errors.push(`${w}: неизвестный домен эффекта ${k}`);
+    for (const k of Object.keys(d.onset || {})) if (!EFF.includes(k)) errors.push(`${w}: неизвестный домен onset ${k}`);
+    for (const k of Object.keys(d.se || {})) {
+      if (!SEK.includes(k)) errors.push(`${w}: неизвестное НЯ ${k}`);
+      if (!(d.se[k] >= 0 && d.se[k] <= 3)) errors.push(`${w}: НЯ ${k} вне 0–3`);
+    }
+    for (const c of (d.contra || []).concat(d.caution || [])) {
+      if (!tagOk(c.t)) errors.push(`${w}: неизвестная метка противопоказания ${c.t}`);
+      if (c.sev && !['major', 'moderate'].includes(c.sev)) errors.push(`${w}: неверная тяжесть ${c.sev}`);
+      if (!str(c.note, 5)) errors.push(`${w}: нет пояснения к ${c.t}`);
+    }
+    for (const m of d.monitor || []) {
+      if (!PH.TESTS[m.test]) errors.push(`${w}: неизвестный анализ ${m.test}`);
+      if (!['start', 'week', 'level', 'sx'].includes(m.when)) errors.push(`${w}: неверный when ${m.when}`);
+      if (m.only && !PH.TAG_NAMES[m.only]) errors.push(`${w}: неизвестное условие only ${m.only}`);
+    }
+    for (const k of d.kin || []) if (!drugIds.has(k)) errors.push(`${w}: родственный препарат ${k} не найден`);
+    if (!str(d.notes, 40)) errors.push(`${w}: нет описания`);
+    badChars(d.notes, w);
+  }
+  for (const it of ints) {
+    const w = `interventions.${it.id}`;
+    seen('int:' + it.id, w);
+    if (!str(it.name) || !str(it.note, 10)) errors.push(`${w}: нет name или note`);
+    for (const k of Object.keys(it.eff || {})) if (!EFF.includes(k)) errors.push(`${w}: неизвестный домен ${k}`);
+  }
+  // КР: каждая запись ссылается на существующий препарат, класс, группу или вмешательство
+  const GL = D.guidelines || {};
+  for (const g of Object.keys(PH.GROUPS)) if (!GL[g]) errors.push(`guidelines: нет КР для группы ${g}`);
+  for (const [g, x] of Object.entries(GL)) {
+    const w = `guidelines.${g}`;
+    if (!PH.GROUPS[g]) errors.push(`${w}: неизвестная группа`);
+    if (!str(x.title)) errors.push(`${w}: нет названия КР`);
+    if (x.year != null && !(x.year >= 2016 && x.year <= 2026)) errors.push(`${w}: странный год ${x.year}`);
+    if (x.standard && !(str(x.standard.title) && /приказ/.test(x.standard.order || ''))) errors.push(`${w}: стандарт без приказа`);
+    for (const [ph, lists] of Object.entries(x.phases || {})) {
+      for (const k of ['first', 'second', 'adjunct', 'avoid']) {
+        for (const e0 of lists[k] || []) {
+          const e = typeof e0 === 'string' ? { id: e0 } : e0;
+          const ok = e.id ? drugIds.has(e.id) || intIds.has(e.id) : e.cls ? classes.has(e.cls) : e.group ? GROUPS.includes(e.group) : false;
+          if (!ok) errors.push(`${w}.${ph}.${k}: неизвестная ссылка ${JSON.stringify(e)}`);
+          if ((e.uur && !/^[ABC]$/.test(e.uur)) || (e.udd && !/^[1-5]$/.test(e.udd))) errors.push(`${w}.${ph}.${k}: неверные УУР/УДД`);
+          if (k === 'avoid' && !str(e.why, 20)) errors.push(`${w}.${ph}.avoid: нет пояснения why`);
+        }
+      }
+    }
+  }
+  // Пациенты отделения
+  const STAGES = ['severe', 'moderate', 'mild', 'remission'];
+  const tplIds = new Set();
+  for (const t of D.wardPatients || []) {
+    const w = `wardPatients.${t.id}`;
+    seen('ward:' + t.id, w);
+    tplIds.add(t.id);
+    if (!PH.GROUPS[t.group]) errors.push(`${w}: неизвестная группа ${t.group}`);
+    if (!(t.where || []).length || t.where.some((x) => !['study', 'hospital'].includes(x))) errors.push(`${w}: неверное where`);
+    if (!['m', 'f'].includes(t.sex)) errors.push(`${w}: нет пола`);
+    if (!(Array.isArray(t.age) && t.age[0] <= t.age[1])) errors.push(`${w}: неверный возраст`);
+    if (!(t.sev0 >= 20 && t.sev0 <= 98)) errors.push(`${w}: sev0 вне 20–98`);
+    for (const k of ['dx', 'admit', 'history', 'complaints', 'status', 'pitfall', 'ideal']) if (!str(t[k], 30)) errors.push(`${w}: нет ${k}`);
+    for (const k of ['admit', 'history', 'complaints', 'status', 'pitfall', 'ideal']) badChars(t[k], w + '.' + k);
+    for (const x of t.traits || []) if (!tagOk(x)) errors.push(`${w}: неизвестная метка ${x}`);
+    for (const m of t.meds_home || []) if (!PH.TAG_NAMES[m.tag] || !str(m.name)) errors.push(`${w}: неверный сопутствующий препарат ${JSON.stringify(m)}`);
+    for (const id of (t.intolerant || []).concat(t.failed || [])) if (!drugIds.has(id)) errors.push(`${w}: неизвестный препарат ${id}`);
+    for (const r of t.home_rx || []) {
+      const d = drugs.find((x) => x.id === r.id);
+      if (!d) errors.push(`${w}: home_rx — неизвестный препарат ${r.id}`);
+      else {
+        const f = d.forms.find((x) => x.route === (r.route || 'po'));
+        if (!f) errors.push(`${w}: home_rx — у ${r.id} нет формы ${r.route}`);
+        else if (f.steps.indexOf(r.dose) < 0) errors.push(`${w}: home_rx — доза ${r.dose} не из шагов ${r.id}`);
+      }
+    }
+    if (!['voluntary', 'involuntary'].includes(t.legal || 'voluntary')) errors.push(`${w}: неверный legal`);
+    if (t.phase && !(GL[t.group] && GL[t.group].phases && GL[t.group].phases[t.phase])) errors.push(`${w}: нет фазы КР ${t.phase}`);
+    for (const st of STAGES) if (!((t.quotes || {})[st] || []).length) errors.push(`${w}: нет реплик для стадии ${st}`);
+  }
+  const groupsWithPts = new Set((D.wardPatients || []).map((t) => t.group));
+  for (const g of Object.keys(PH.GROUPS)) if (!groupsWithPts.has(g)) warns.push(`wardPatients: нет пациентов группы ${g}`);
+  if (!(D.wardPatients || []).some((t) => (t.where || []).includes('study'))) errors.push('wardPatients: нет учебных пациентов');
+  // Тексты
+  const T = D.wardTexts || {};
+  for (const g of Object.keys(PH.GROUPS)) {
+    for (const st of STAGES) {
+      if (!(((T.course || {})[g] || {})[st] || []).length) errors.push(`wardTexts.course.${g}.${st}: пусто`);
+      if (!(((T.status || {})[g] || {})[st] || []).length) errors.push(`wardTexts.status.${g}.${st}: пусто`);
+    }
+  }
+  const allText = [];
+  const walk = (x) => (typeof x === 'string' ? allText.push(x) : x && typeof x === 'object' && Object.values(x).forEach(walk));
+  walk(T);
+  for (const x of allText) if (/\{(?!P\})(?!\{)[^{}]*\}/.test(x.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, ''))) errors.push(`wardTexts: одинарные фигурные скобки (форма по полу игрока) в «${x.slice(0, 50)}»`);
+}
+
 const counts = {
   лекций: (D.lectures || []).length,
   случаев: (D.cases || []).length,
@@ -206,6 +337,8 @@ const counts = {
   комиссия: (D.commissionTemplates || []).length,
   терминов: Object.keys(gloss).length,
   доптест: (D.extraTest || []).length,
+  препаратов: (D.drugs || []).length,
+  'пациентов отделения': (D.wardPatients || []).length,
 };
 console.log('Загружено:', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', '));
 warns.forEach((w) => console.log('  ⚠ ' + w));

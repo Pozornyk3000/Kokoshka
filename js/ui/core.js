@@ -365,7 +365,25 @@
       return true;
     }
     const s = A.state;
-    if (!s || s.activity) return false;
+    if (s && s.activity) {
+      // в отделении «назад» закрывает лист назначения и возвращает из истории болезни к списку
+      const step = s.activity.steps[s.activity.i];
+      const p = step && step.type === 'ward' ? step.p : null;
+      if (p && (p.sheet || p.summary || p.open)) {
+        if (p.sheet) p.sheet = null;
+        else if (p.summary) p.summary = null;
+        else {
+          const pt = A.ward.byUid(s, p.open);
+          if (pt) pt.seen = pt.notes.length;
+          p.open = null;
+        }
+        G.save();
+        UI.render({ scroll: 'top' });
+        return true;
+      }
+      return false;
+    }
+    if (!s) return false;
     if (v.tab === 'ref' && v.refItem != null) {
       v.refItem = null;
       UI.render();

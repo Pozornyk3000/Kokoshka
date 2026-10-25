@@ -283,6 +283,71 @@
     finish: (s, res) => G.finishSeminar(s, res[0], s.day),
   });
   def({
+    id: 'ward_round',
+    place: 'uni',
+    title: 'Обход: мои пациенты',
+    sub: (s) => {
+      const n = A.ward.active(s).filter((p) => p.mode === 'study').length;
+      const urgent = A.ward.active(s).some((p) => p.mode === 'study' && p.pending);
+      return 'Курация в отделении кафедры · ' + (n ? n + ' ' + U.plural(n, ['пациент', 'пациента', 'пациентов']) : 'новые поступления') + (urgent ? ' · есть срочное' : '');
+    },
+    slots: [0, 1, 2],
+    days: 'weekday',
+    phases: ['study'],
+    free: true,
+    dur: 0,
+    energy: -6,
+    chips: [{ t: '−6 энергии', c: 'neg' }, { t: 'практика', c: 'pos' }],
+    hide: (s) => !A.ward.practiceOn(s),
+    req: (s) => (s.ward && s.ward.lastRound === s.day ? 'Обход сегодня уже был' : null),
+    primary: (s) => !(s.ward && s.ward.lastRound === s.day),
+    run: (s) => {
+      const steps = [];
+      if (!s.flags.practiceIntro) steps.push({ type: 'story', story: 'practice_start' });
+      steps.push({ type: 'ward', mode: 'study' });
+      return { steps };
+    },
+    finish: (s, res) => {
+      s.flags.practiceIntro = true;
+      const r = res[res.length - 1] || {};
+      G.apply(s, { energy: -6, stress: 2, xp: 4 });
+      G.learn(s, 'pharm', 0.6 * G.focus(s));
+      const out = ['Обход закончен.'];
+      if (r.discharged && r.discharged.length) out.push('Выписаны: ' + r.discharged.map((x) => x.name + ' — ' + x.score + ' баллов').join(', ') + '.');
+      if (r.patients) out.push('Под вашим наблюдением: ' + r.patients + ' ' + U.plural(r.patients, ['пациент', 'пациента', 'пациентов']) + '. Назначения проверит Кандинский.');
+      return out.join(' ');
+    },
+  });
+  def({
+    id: 'practice_makeup',
+    place: 'uni',
+    title: 'Отработать практику',
+    sub: 'Без зачёта по клинической практике к ГИА не допустят. Кандинский даст пациента на разбор',
+    slots: [0, 1],
+    days: 'weekday',
+    phases: ['session'],
+    energy: -14,
+    dur: 1,
+    keepsObligation: true,
+    chips: [{ t: '−14 энергии', c: 'neg' }, { t: 'зачёт по практике', c: 'pos' }],
+    hide: (s) => G.practiceCredit(s) || !(s.ward && s.ward.practice && s.ward.practice.closed),
+    primary: () => true,
+    run: (s) => {
+      const id = G.pickCase(s, ['ward']) || G.pickCase(s, null);
+      return { steps: [{ type: 'story', story: 'practice_makeup' }, { type: 'case', id, mode: 'seminar', makeup: true }] };
+    },
+    finish: (s, res) => {
+      const r = res[1];
+      G.apply(s, { energy: -14, stress: 4 });
+      if (r && r.score >= 60) {
+        s.ward.practice.grade = 3;
+        s.ward.practice.makeupDone = true;
+        return 'Кандинский расписывается в дневнике практики: «Зачтено. Удовлетворительно — но по делу». Теперь вы допущены к ГИА.';
+      }
+      return 'Разбор не задался (' + (r ? r.score : 0) + ' из 100). Кандинский: «Завтра — ещё раз. Без практики врачом не становятся».';
+    },
+  });
+  def({
     id: 'otrabotka',
     place: 'uni',
     title: 'Отработать пропуск',
@@ -375,7 +440,7 @@
     hideOffSlot: true,
     chips: [{ t: 'утро и день', c: '' }, { t: '−18 энергии', c: 'neg' }],
     hide: (s) => !G.examAvailable(s),
-    req: (s) => (G.inDebt(s) ? 'Без допуска: сначала отработай пропуски (вечером)' : null),
+    req: (s) => (G.inDebt(s) ? 'Без допуска: сначала отработай пропуски (вечером)' : G.examAvailable(s) === 'exam2' && !G.practiceCredit(s) ? 'К ГИА не допущен{|а}: нет зачёта по практике' : null),
     primary: () => true,
     run: (s) => {
       const ex = G.examAvailable(s);
@@ -994,6 +1059,7 @@
       if (passed(k)) return false;
       if (s.day < G.EXAM_DAYS[k]) return false;
       if (k === 'accr' && !(passed('exam1') && passed('exam2'))) return false;
+      if (k === 'exam2' && !passed('exam1')) return false;
       const r = s.study.exams[k];
       if (r && r.lastDay === s.day) return false;
       return true;
@@ -1010,6 +1076,7 @@
     const steps = [];
     if (!s.flags['intro_' + s.career.job]) steps.push({ type: 'story', story: 'job_intro_' + s.career.job });
     else steps.push({ type: 'story', story: 'work_day' });
+    if (A.ward && A.ward.capacity(s) > 0) steps.push({ type: 'ward', mode: 'work' });
     let caseId = null;
     if (!late && U.chance(job.caseChance)) caseId = G.pickCase(s, job.settings);
     if (caseId) steps.push({ type: 'case', id: caseId, mode: 'work' });
@@ -1026,7 +1093,9 @@
     s.stats.workdays++;
     G.apply(s, { energy: -Math.round(job.energy * (late ? 0.6 : 1)), stress: job.stress });
     const out = [];
-    const r = res[1];
+    const r = (res || []).find((x) => x && (x.kind === 'case' || x.kind === 'mini'));
+    const wr = (res || []).find((x) => x && x.kind === 'ward');
+    if (wr && wr.discharged && wr.discharged.length) out.push('Выписаны: ' + wr.discharged.map((x) => x.name + ' (' + x.score + ')').join(', ') + '.');
     if (r && r.kind === 'case') {
       const repGain = ((r.score - 60) / 22) * job.rep;
       G.apply(s, { rep: repGain });
@@ -1076,6 +1145,7 @@
 
   /** Неделя на автопилоте: рутинная работа без разборов, режим подработок по выбору. */
   G.autoWeek = function (s, mode) {
+    if (A.ward) A.ward.handoverAll(s, 'Неделя на автопилоте: ваших пациентов ведёт коллега.');
     const plans = {
       calm: { nights: [], gigs: [] },
       gigs: { nights: [3], gigs: [1, 3] },
@@ -1125,6 +1195,7 @@
 
   /** Неделя отпуска: быстрые сутки отдыха. */
   G.vacation = function (s, trip) {
+    if (A.ward) A.ward.handoverAll(s, 'Отпуск: ваших пациентов принял коллега.');
     for (let i = 0; i < 7; i++) {
       if (s.career && !C.isWeekend(s.day)) {
         s.career.today = s.day;

@@ -260,7 +260,7 @@
       cls: 'sga',
       group: 'antipsychotic',
       forms: [
-        { route: 'po', label: 'таблетки, раствор', steps: [0.25, 0.5, 1, 2, 3, 4, 6, 8], split: 2 },
+        { route: 'po', label: 'таблетки, раствор', steps: [0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12, 16], split: 2 },
         { route: 'depot', label: 'Конста в/м, раз в 2 недели (первые 3 недели — с таблетками)', steps: [25, 37.5, 50], interval: 14, lag: 21, range: { start: 25, min: 25, max: 50 } },
       ],
       kin: ['paliperidone'],

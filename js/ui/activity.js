@@ -530,6 +530,7 @@
   ACT.examiners = {
     korsakova: { npc: 'korsakova', room: 'Аудитория 3' },
     kandinsky: { npc: 'kandinsky', room: 'Учебная комната 12' },
+    gek: { npc: 'korsakova', room: 'Актовый зал кафедры' },
     commission: { npc: 'shubin', room: 'Аккредитационный центр' },
   };
   ACT.exam = function (s, step) {
@@ -543,7 +544,9 @@
     if (p.stage === 'intro') {
       const t =
         def.examiner === 'commission'
-          ? 'Аккредитационный центр, камеры под потолком, вежливая комиссия. Сначала тест — ' + p.test.length + ' вопросов, затем ситуационная задача. Порог теста — 70%, задачи — 50 баллов.'
+          ? 'Аккредитационный центр, камеры под потолком, вежливая подкомиссия. Сначала тестирование — ' + p.test.length + ' заданий (на настоящей аккредитации их 80 за 60 минут), «сдано» — от 70% верных ответов. Затем практико-ориентированный этап: ' + p.cases.length + ' ' + U.plural(p.cases.length, ['ситуационная задача', 'ситуационные задачи', 'ситуационных задач']) + ', порог — 50 баллов.'
+          : def.examiner === 'gek'
+          ? 'Государственная экзаменационная комиссия за длинным столом: Корсакова — председатель, рядом Кандинский и главный врач ПБ №6. На столе — ваш дневник практики и зачётка. «Коллега, тяните билет. Нас интересует, как вы будете лечить: по клиническим рекомендациям, с обоснованием»'
           : 'Билеты разложены веером на зелёном сукне. ' + (def.examiner === 'korsakova' ? 'Корсакова поправляет очки: «Тяните. И не торопитесь: сначала статус, потом синдром, потом диагноз».' : 'Кандинский постукивает ручкой: «Диагноз вам дадут в условии почти даром. Меня интересует, что вы будете делать».');
       return (
         UI.sceneFig('exam', s) +
@@ -575,7 +578,7 @@
     let grade = res.grade;
     const prev = s.study.exams[step.exam];
     if (prev && grade > 4) grade = 4;
-    const gname = A.exams.gradeName(grade);
+    const gname = def.passFail ? (grade >= 3 ? 'сдано' : 'не сдано') : A.exams.gradeName(grade);
     const comment =
       grade === 5 ? (def.examiner === 'kandinsky' ? '«Ну что ж. Пациентам с вами повезёт», — Кандинский впервые улыбается.' : '«Отлично. Видно клиническое мышление», — говорит экзаменатор.')
       : grade === 4 ? '«Хорошо. Есть пробелы, но рассуждаете правильно».'
@@ -590,7 +593,7 @@
     }
     return (
       '<section class="result-card exam-result"><span class="eyebrow">' + U.esc(def.title) + '</span><div class="stamp' + (grade < 3 ? ' bad' : '') + (gname.length > 9 ? ' long' : '') + '"><b>' + U.esc(gname) + '</b><span>' + res.pct + '%</span></div>' +
-      '<div class="zachetka-line"><span>' + U.esc(def.short) + '</span><span class="hand grade">' + A.exams.gradeShort(grade) + '</span><span class="hand sign">' + (grade >= 3 ? U.esc(def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : 'Комиссия') : '') + '</span></div>' +
+      '<div class="zachetka-line"><span>' + U.esc(def.short) + '</span><span class="hand grade">' + (def.passFail ? (grade >= 3 ? 'сдано' : 'не сдано') : A.exams.gradeShort(grade)) + '</span><span class="hand sign">' + (grade >= 3 ? U.esc(def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : def.examiner === 'gek' ? 'ГЭК' : 'Подкомиссия') : '') + '</span></div>' +
       '<p>' + U.esc(comment) + '</p>' +
       (prev && res.grade > 4 ? '<p class="dim small">Пересдача: выше «хорошо» не ставят.</p>' : '') +
       '<div class="parts">' + p.scores.map((sc, i) => '<div class="part"><span>Задача ' + (i + 1) + '</span><div class="mini-track"><div style="width:' + sc + '%"></div></div><b>' + sc + '</b></div>').join('') + '</div>' +

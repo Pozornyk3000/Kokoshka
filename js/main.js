@@ -23,6 +23,14 @@
       });
     };
     fill(st, fresh);
+    // Сохранения до появления практики и ГИА: практику засчитываем, документы выдаём задним числом
+    const W = A.ward;
+    if (W && st.ward && st.ward.practice && !st.ward.practice.closed && (st.phase !== 'study' || st.day > W.PRACTICE_TO)) {
+      Object.assign(st.ward.practice, { closed: true, grade: 4, legacy: true });
+    }
+    const passed = (k) => st.study.exams[k] && st.study.exams[k].grade >= 3;
+    if (!st.study.diploma && passed('exam2') && A.exams) A.exams.issueDiploma(st);
+    if (!st.study.accr && passed('accr')) st.study.accr = { day: st.study.exams.accr.lastDay, pct: st.study.exams.accr.pct, testPct: null };
     // Активность со ссылкой на удалённый контент — сбрасываем, чтобы игра не зависла
     if (st.activity) {
       const ok = st.activity.steps.every((x) => {

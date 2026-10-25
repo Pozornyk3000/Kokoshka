@@ -277,33 +277,34 @@
   const EX = (A.exams = {
     defs: {
       exam1: {
-        title: 'Экзамен по клинической психиатрии',
-        short: 'Клиническая психиатрия',
-        sub: 'Профессор Корсакова · 3 ситуационные задачи: статус, синдром, диагноз',
+        title: 'Экзамен по психиатрии',
+        short: 'Психиатрия',
+        sub: 'Промежуточная аттестация · профессор Корсакова · 3 ситуационные задачи: статус, синдром, диагноз',
         parts: ['status', 'dx'],
         n: 3,
         examiner: 'korsakova',
         topics: ['psychopath', 'affective', 'psychosis', 'neurotic', 'organic', 'child', 'addiction', 'personality'],
       },
       exam2: {
-        title: 'Экзамен по терапии и неотложной психиатрии',
-        short: 'Терапия и неотложка',
-        sub: 'Доцент Кандинский · 3 ситуационные задачи: диагноз и тактика',
+        title: 'Государственная итоговая аттестация',
+        short: 'ГИА',
+        sub: 'Государственная экзаменационная комиссия · 3 ситуационные задачи: диагноз и тактика лечения',
         parts: ['dx', 'tx'],
         n: 3,
-        examiner: 'kandinsky',
+        examiner: 'gek',
         topics: ['pharm', 'emergency', 'addiction', 'affective', 'psychosis', 'organic', 'neurotic', 'child', 'personality'],
         prefer: ['pharm', 'emergency'],
       },
       accr: {
-        title: 'Первичная аккредитация',
+        title: 'Первичная специализированная аккредитация',
         short: 'Аккредитация',
-        sub: 'Комиссия · тест из 12 вопросов и ситуационная задача',
+        sub: 'Аккредитационная подкомиссия · тестирование (20 заданий, «сдано» — от 70%) и две ситуационные задачи',
         parts: ['status', 'dx', 'tx'],
-        n: 1,
-        test: 12,
+        n: 2,
+        test: 20,
         examiner: 'commission',
         topics: null,
+        passFail: true,
       },
     },
   });
@@ -389,21 +390,49 @@
     s.study.exams[res.exam] = { grade, attempts, lastDay: s.day, pct: res.pct, tasks: res.cases };
     const def = EX.defs[res.exam];
     G.apply(s, { stress: grade >= 3 ? -12 : 10, rep: grade === 5 ? 3 : grade === 4 ? 1 : grade === 2 ? -2 : 0, xp: 20 + res.pct / 2 });
-    let text = def.short + ': «' + EX.gradeName(grade) + '» (' + res.pct + '%). ';
+    let text = def.short + ': ' + (def.passFail ? (grade >= 3 ? '«сдано»' : '«не сдано»') : '«' + EX.gradeName(grade) + '»') + ' (' + res.pct + '%' + (res.testPct != null ? ', тест — ' + res.testPct + '%' : '') + '). ';
     if (grade === 2) {
-      text += res.exam === 'accr' ? 'Аккредитация не пройдена. Пересдать можно в любой будний день — утром на кафедре.' : 'Пересдача — в любой будний день утром. Выше «хорошо» на пересдаче не поставят.';
+      text +=
+        res.exam === 'accr'
+          ? 'Аккредитация не пройдена' + (res.testPct != null && res.testPct < 70 ? ': на тестировании меньше 70%' : '') + '. Повторить можно в любой будний день утром.'
+          : 'Пересдача — в любой будний день утром. Выше «хорошо» на пересдаче не поставят.';
       return text;
     }
-    if (res.exam === 'accr') {
-      const all = ['exam1', 'exam2', 'accr'].every((k) => s.study.exams[k] && s.study.exams[k].grade === 5);
+    if (res.exam === 'exam2') {
+      EX.issueDiploma(s);
+      G.queue(s, [{ type: 'story', story: 'gia_passed' }, { type: 'diploma' }], 'diploma');
+      text += 'Решением ГЭК присвоена квалификация «врач-психиатр». Впереди — аккредитация.';
+    } else if (res.exam === 'accr') {
+      s.study.accr = { day: s.day, pct: res.pct, testPct: res.testPct == null ? null : res.testPct };
+      const all = s.study.exams.exam1 && s.study.exams.exam1.grade === 5 && s.study.exams.exam2 && s.study.exams.exam2.grade === 5 && res.pct >= 85;
       if (all) G.unlock(s, 'red_diploma');
       s.phase = 'graduate';
       G.queue(s, [{ type: 'story', story: 'graduation' }, { type: 'jobs' }], 'graduation');
-      text += 'Ты — врач-психиатр. Официально.';
+      text += 'Сведения об аккредитации внесены в Федеральный регистр медицинских работников. Теперь можно работать врачом-психиатром.';
     } else {
       text += grade === 5 ? 'Зачётка становится красивее.' : 'Сдано — и это главное.';
     }
     return text;
+  };
+
+  /** Диплом об окончании ординатуры с приложением: оценки по дисциплинам, практике и ГИА. */
+  EX.issueDiploma = function (s) {
+    const pr = (s.ward && s.ward.practice) || {};
+    const n = 100000 + (U.hash(s.id + 'diploma') % 900000);
+    s.study.diploma = {
+      day: s.day,
+      number: 'АН ' + String(n).padStart(6, '0'),
+      reg: String(100 + (U.hash(s.id + 'reg') % 800)),
+      protocol: String(10 + (U.hash(s.id + 'gek') % 70)),
+      qual: 'Врач-психиатр',
+      spec: '31.08.20 Психиатрия',
+      grades: {
+        exam1: s.study.exams.exam1 ? s.study.exams.exam1.grade : null,
+        practice: pr.grade || null,
+        gia: s.study.exams.exam2 ? s.study.exams.exam2.grade : null,
+      },
+    };
+    return s.study.diploma;
   };
 
   /* ================= Мини-задачи ================= */

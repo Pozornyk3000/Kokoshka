@@ -17,10 +17,13 @@
   W.active = (s) => (s.ward && s.ward.pts ? s.ward.pts.filter((p) => !p.done) : []);
   W.byUid = (s, uid) => (s.ward && s.ward.pts ? s.ward.pts.find((p) => p.uid === uid) : null);
 
-  /** Сколько пациентов ведёт игрок. */
+  /** Сколько пациентов ведёт игрок: ординатор — двоих, врач стационара — троих (с категорией — четверых). */
   W.capacity = function (s) {
     if (s.phase === 'study') return 2;
-    if (s.phase === 'career' && s.career && s.career.job === 'hospital') return 3 + (G().rankIndex ? Math.min(1, G().rankIndex(s) >= 2 ? 1 : 0) : 0);
+    if (s.phase === 'career' && s.career) {
+      if (s.career.job === 'hospital') return 3 + (G().rankIndex(s) >= 2 ? 1 : 0);
+      if (s.career.job === 'uni') return 2;
+    }
     return 0;
   };
 
@@ -37,7 +40,11 @@
   }
   /** Форма слова по полу пациента. */
   W.pv = (pt, m, f) => (pt.sex === 'f' ? f : m);
-  W.fill = (pt, text) => String(text || '').replace(/\{P\}/g, pt.name.split(' ')[0]);
+  /** {P} — имя пациента, {{м|ж}} — форма по полу пациента (одинарные скобки — по полу игрока). */
+  W.fill = (pt, text) =>
+    String(text || '')
+      .replace(/\{P\}/g, pt.name.split(' ')[0])
+      .replace(/\{\{([^{}|]*)\|([^{}|]*)\}\}/g, (m, a, b) => (pt.sex === 'f' ? b : a));
 
   /* ---------- Поступление ---------- */
   W.pickTemplate = function (s, mode) {
@@ -166,6 +173,8 @@
   W.tick = function (s, steps) {
     const w = s.ward;
     if (!w || !w.pts) return;
+    // врач ушёл из стационара — пациентов принимают коллеги
+    if (W.capacity(s) === 0 && W.active(s).some((p) => p.mode === 'work')) W.handoverAll(s, 'Вы больше не работаете в отделении: пациентов приняли коллеги.');
     W.active(s).forEach((pt) => {
       // нерешённое срочное событие решает дежурный врач
       if (pt.pending && pt.pending.day < s.day) autoResolve(s, pt);
@@ -1522,13 +1531,13 @@
     }
     if (pt.lab.prl > 45 && !pt.seenSe.prolactin) {
       pt.seenSe.prolactin = s.day;
-      note(s, pt, 'se', pickText(pt, 'se:prolactin', (T.se || {}).prolactin) || (pt.sex === 'f' ? 'Жалуется на выделения из груди и задержку месячных.' : 'Жалуется на снижение влечения и болезненность грудных желёз.'), 'warn');
+      note(s, pt, 'se', pickText(pt, 'se:prolactin', (T.se || {})['prolactin_' + pt.sex]) || (pt.sex === 'f' ? 'Жалуется на выделения из груди и задержку месячных.' : 'Жалуется на снижение влечения и болезненность грудных желёз.'), 'warn');
     }
     if (pt.lab.li > 1.2 && pt.lab.li <= 1.6 && !pt.seenSe.liHigh) {
       pt.seenSe.liHigh = s.day;
       note(s, pt, 'se', 'Усилился тремор рук, жалобы на тошноту и жидкий стул.', 'warn');
     }
-    if (pt.refusing) note(s, pt, 'staff', 'Медсестра: «Опять не выпил{|а} — нашли таблетки под матрасом».'.replace('{|а}', W.pv(pt, '', 'а')), 'warn');
+    if (pt.refusing) note(s, pt, 'staff', W.fill(pt, 'Медсестра: «Опять не выпил{{|а}} — нашли таблетки под матрасом».'), 'warn');
   }
 
   /* ---------- Лист назначений ---------- */
@@ -1642,7 +1651,7 @@
     const g = P().group(pt);
     if (pt.pending) return { ok: false, why: 'Сначала разберитесь со срочной ситуацией.' };
     if (pt.away) return { ok: false, why: 'Пациент сейчас в ' + pt.away.where + '.' };
-    if (pt.sev > g.discharge + 25) return { ok: false, why: 'Заведующий не подпишет выписку: состояние остаётся тяжёлым.' };
+    if (pt.sev > g.discharge + 25) return { ok: false, why: (pt.mode === 'study' ? 'Кандинский' : 'Заведующий') + ' не подпишет выписку: состояние остаётся тяжёлым.' };
     if (pt.risk.suicide >= 3 && pt.sev > g.discharge) return { ok: false, why: 'Высокий суицидальный риск — выписывать рано.' };
     return { ok: true, early: pt.sev > g.discharge };
   };
@@ -1756,10 +1765,14 @@
     w.done.push({ uid: pt.uid, tpl: pt.tpl, name: pt.name, age: pt.age, sex: pt.sex, dx: pt.dx, group: pt.group, admit: pt.admitDay, end: s.day, how, score: sc.total, sev0: Math.round(pt.sev0), sev: Math.round(pt.sev), mode: pt.mode, look: pt.look, rev: pt.rev.list.slice(-12), maint: sc.maint, rx: pt.rx.map((r) => ({ id: r.id, kind: r.kind, route: r.route, dose: r.dose })) });
     if (w.done.length > 60) w.done.splice(0, w.done.length - 60);
     // через день-два освобождаются данные пациента
-    if (pt.mode === 'study') w.practice.scores.push(sc.total);
+    if (pt.mode === 'study' && how !== 'colleague') w.practice.scores.push(sc.total);
     const g = P().group(pt);
     const Gm = G();
-    if (how !== 'handover') {
+    if (how === 'discharge') {
+      if (!s.ach.first_discharge) Gm.unlock(s, 'first_discharge');
+      if ((s.stats.wardGood || 0) + (sc.total >= 85 ? 1 : 0) >= 5) Gm.unlock(s, 'ward_good');
+    }
+    if (how !== 'handover' && how !== 'colleague') {
       Gm.learn(s, g.topic, sc.total >= 70 ? 2.5 : 1.5);
       Gm.learn(s, 'pharm', sc.total >= 70 ? 2 : 1);
       Gm.apply(s, { xp: Math.round(20 + sc.total / 2), stress: sc.total >= 70 ? -3 : 2 });
@@ -1772,6 +1785,16 @@
     }
     pt.notes = pt.notes.slice(-40);
     return sc;
+  };
+
+  /** Передать всех пациентов отделения коллеге (отпуск, неделя на автопилоте). */
+  W.handoverAll = function (s, why) {
+    const act = W.active(s).filter((p) => p.mode === 'work');
+    if (!act.length) return 0;
+    act.forEach((pt) => W.finish(s, pt, 'colleague'));
+    s.ward.pts = s.ward.pts.filter((p) => !p.done);
+    G().say(s, why + ' ' + U.cap(U.plural(act.length, ['передан', 'переданы', 'переданы'])) + ' ' + act.length + ' ' + U.plural(act.length, ['пациент', 'пациента', 'пациентов']) + '.', 'info');
+    return act.length;
   };
 
   /* ---------- Практика ординатора ---------- */
@@ -1846,6 +1869,7 @@
   /** Начало обхода: при необходимости — новые поступления. */
   W.beginRound = function (s, mode) {
     W.ensure(s);
+    s.ward.pts = s.ward.pts.filter((p) => !p.done);
     const admitted = W.fillBeds(s, mode);
     s.ward.lastRound = s.day;
     if (mode === 'study') s.ward.practice.rounds++;

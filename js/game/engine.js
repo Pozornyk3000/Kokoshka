@@ -37,7 +37,8 @@
       xp: 0,
       know,
       phase: 'study',
-      study: { lectures: {}, seminars: {}, debts: [], rating: 0, ratingMax: 0, exams: {}, automat: null },
+      study: { lectures: {}, seminars: {}, debts: [], rating: 0, ratingMax: 0, exams: {}, automat: null, diploma: null, accr: null },
+      ward: A.ward ? A.ward.blank() : null,
       career: null,
       science: { pubs: 0, draft: 0, talk: false },
       housing: 'dorm',
@@ -96,6 +97,8 @@
     return r;
   };
   G.rank = (s) => D.ranks[G.rankIndex(s)];
+  /** Зачёт по производственной (клинической) практике — условие допуска к ГИА. */
+  G.practiceCredit = (s) => !!(A.ward && A.ward.practiceCredit(s));
   G.gradeAvg = function (s) {
     const g = ['exam1', 'exam2', 'accr'].map((k) => s.study.exams[k] && s.study.exams[k].grade).filter((x) => x >= 3);
     if (!g.length) return 0;
@@ -333,6 +336,8 @@
     if (G.isSick(s) && G.isWorkday(s)) s.career.weekSick = (s.career.weekSick || 0) + 1;
 
     const steps = [];
+    // Пациенты в отделении живут своей жизнью и без врача
+    if (A.ward && s.ward) A.ward.tick(s, steps);
     // Неделя закончилась
     if (C.wd(s.day) === 0) {
       const sum = G.settleWeek(s, prevDay);

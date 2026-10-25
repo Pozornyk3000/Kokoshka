@@ -174,6 +174,7 @@
   });
 
   /* ---------- Зачётка / карьера ---------- */
+  const W_TO = () => (A.ward ? A.ward.PRACTICE_TO : 19);
   S.profile = function (s) {
     const dream = D.dreams[s.player.dream];
     const prog = dream.progress(s);
@@ -189,14 +190,19 @@
       })
       .join('');
     const stat = (l, v) => '<div class="stat"><span>' + l + '</span><b>' + v + '</b></div>';
-    const exams = ['exam1', 'exam2', 'accr']
+    const row = (name, grade, day, sign) => '<tr><td>' + name + '</td><td class="hand grade">' + (grade || '') + '</td><td class="mono dim">' + (day ? C.fmtDate(day) : '') + '</td><td class="hand sign">' + (sign || '') + '</td></tr>';
+    const pr = s.ward && s.ward.practice;
+    const exams = ['exam1', 'practice', 'exam2', 'accr']
       .map((k) => {
+        if (k === 'practice') {
+          if (!pr || !pr.closed) return row('Практика', '', null, '');
+          return row('Практика', pr.grade >= 3 ? A.exams.gradeShort(pr.grade) : 'н/з', W_TO(), pr.grade >= 3 ? 'Кандинский' : '');
+        }
         const r = s.study.exams[k];
         const def = A.exams.defs[k];
-        const examiner = def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : 'Комиссия';
-        return (
-          '<tr><td>' + def.short + '</td><td class="hand grade">' + (r ? A.exams.gradeShort(r.grade) + (r.automat ? ' (авт.)' : '') : '') + '</td><td class="mono dim">' + (r ? C.fmtDate(r.lastDay) : '') + '</td><td class="hand sign">' + (r && r.grade >= 3 ? examiner : '') + '</td></tr>'
-        );
+        const examiner = def.examiner === 'korsakova' ? 'Корсакова' : def.examiner === 'kandinsky' ? 'Кандинский' : def.examiner === 'gek' ? 'ГЭК' : 'Подкомиссия';
+        const g = r ? (def.passFail ? (r.grade >= 3 ? 'сдано' : 'не сдано') : A.exams.gradeShort(r.grade) + (r.automat ? ' (авт.)' : '')) : '';
+        return row(def.short, g, r ? r.lastDay : null, r && r.grade >= 3 ? examiner : '');
       })
       .join('');
     const achs = Object.keys(D.achievements)
@@ -238,6 +244,7 @@
       stat('Жильё', D.housing[s.housing].name) +
       '</div></section>' +
       career +
+      UI.ward.profileCards(s) +
       '<section class="card"><h2 class="h2">Знания</h2><p class="dim small">С 35, 55 и 75 баллами по теме открываются подсказки «клинического чутья».</p><div class="kbars">' + knows + '</div></section>' +
       '<section class="card zachetka"><h2 class="h2">Зачётная книжка</h2><div class="table-wrap"><table><thead><tr><th>Дисциплина</th><th>Оценка</th><th>Дата</th><th>Подпись</th></tr></thead><tbody>' + exams + '</tbody></table></div>' +
       (s.phase === 'study' ? '<p class="small dim">Рейтинг семестра: ' + (s.study.ratingMax ? Math.round((s.study.rating / s.study.ratingMax) * 100) : 0) + '%. С 85% и без долгов — шанс на «автомат».</p>' : '') +
@@ -266,6 +273,9 @@
     const tabs = [
       ['notes', 'Конспекты'],
       ['gloss', 'Симптомы'],
+      ['drugs', 'Препараты'],
+      ['kr', 'КР'],
+      ['ward', 'Курация'],
       ['patients', 'Пациенты'],
       ['log', 'Дневник'],
     ]
@@ -275,11 +285,15 @@
     if (tab === 'notes') body = S.notes(s);
     else if (tab === 'gloss') body = '<label class="field" for="gloss-filter"><span class="label">Поиск по симптомам</span><input id="gloss-filter" type="search" value="' + U.esc(UI.view.glossFilter || '') + '" placeholder="например, бред"></label><div id="gloss-list">' + S.glossList(UI.view.glossFilter || '') + '</div>';
     else if (tab === 'patients') body = S.patients(s);
+    else if (tab === 'drugs') body = UI.ward.drugsRef(s);
+    else if (tab === 'kr') body = UI.ward.krRef(s);
+    else if (tab === 'ward') body = UI.ward.archive(s);
     else body = S.journal(s);
     return UI.hud(s) + '<main class="wrap ref"><h1 class="display page-h">Справочник</h1><div class="tabs" role="tablist">' + tabs + '</div><div class="folder pad">' + body + '</div></main>' + UI.tabbar('ref');
   };
   UI.on('ref-tab', (t) => {
     UI.view.ref = t;
+    UI.view.refItem = null;
     UI.render();
   });
 

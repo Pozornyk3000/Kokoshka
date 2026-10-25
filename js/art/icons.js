@@ -23,6 +23,11 @@
     back: '<path d="M15 5.5 8.5 12l6.5 6.5"/>',
     next: '<path d="m9 5.5 6.5 6.5L9 18.5"/>',
     stamp: '<path d="M9 4.5h6v3.5l-1.5 3h-3L9 8z"/><path d="M5 14.5a3 3 0 0 1 3-3.5h8a3 3 0 0 1 3 3.5V16H5z"/><path d="M4.5 19.5h15"/>',
+    plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+    // капсула — лист назначений
+    pill: '<rect x="3.2" y="8.6" width="17.6" height="6.8" rx="3.4" transform="rotate(-35 12 12)"/><path d="m9.9 9 4.2 6"/>',
+    // кровать — отделение
+    bed: '<path d="M3.5 18.5V6.5M3.5 14.5h17v4M20.5 14.5v-2.5a2.5 2.5 0 0 0-2.5-2.5h-7v5"/><circle cx="7" cy="11.2" r="1.7"/>',
   };
   A.art.icon = function (name) {
     return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (P[name] || P.info) + '</svg>';
