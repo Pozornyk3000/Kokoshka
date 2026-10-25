@@ -64,6 +64,7 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
           node tools/bridge-test.cjs docs/index.html
+          node tools/sound-check.cjs docs/index.html
           node tools/autoplay.cjs docs/index.html 400 --smart --days 10
 
       - uses: actions/setup-java@v4

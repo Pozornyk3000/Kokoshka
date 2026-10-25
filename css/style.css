@@ -1069,6 +1069,37 @@ main.wrap {
   font-size: 14px;
 }
 
+/* ---------- Звук ---------- */
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sound-toggle[aria-pressed='true'] {
+  color: var(--pen);
+  border-color: var(--pen);
+}
+.sound-toggle .ico {
+  width: 18px;
+  height: 18px;
+}
+.field.vol input[type='range'] {
+  width: 100%;
+  accent-color: var(--pen);
+}
+.field.vol input[type='range']:disabled {
+  opacity: 0.45;
+}
+
 /* ---------- Выбор режима ---------- */
 .mode-grid {
   display: grid;

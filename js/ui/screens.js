@@ -37,9 +37,20 @@
       '<p class="cover-note">' +
       (cloud === 'on' ? 'Сохранения хранятся в браузере и в вашем личном разделе Claude.' : cloud === 'connecting' ? 'Проверяем облачное сохранение…' : 'Игра сохраняется автоматически ' + (window.AnamnezAndroid ? 'на этом телефоне.' : 'в этом браузере.')) +
       '</p>' +
+      S.soundToggle() +
       '</section></div></main>'
     );
   };
+  /** Переключатель фоновой музыки (на титуле и в меню). */
+  S.soundToggle = function () {
+    if (!A.sound || !(window.AudioContext || window.webkitAudioContext)) return '';
+    const on = A.sound.enabled();
+    return '<button type="button" class="sound-toggle" data-act="sound-toggle" aria-pressed="' + on + '">' + UI.icon(on ? 'sound' : 'mute') + '<span>Фоновая музыка: ' + (on ? 'включена' : 'выключена') + '</span></button>';
+  };
+  UI.on('sound-toggle', () => {
+    A.sound.setEnabled(!A.sound.enabled());
+    UI.render();
+  });
 
   /* ---------- Выбор режима ---------- */
   S.mode = function () {
@@ -126,6 +137,7 @@
     return look;
   };
   document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'sound-vol' && A.sound) A.sound.setVolume(+e.target.value / 100);
     if (e.target && e.target.id === 'pname' && UI.view.create) UI.view.create.name = e.target.value;
     if (e.target && e.target.id === 'gloss-filter') {
       UI.view.glossFilter = e.target.value;
@@ -182,6 +194,7 @@
           '**Учёба.** Утром — лекции профессора Корсаковой с блиц-опросом, днём — семинары у доцента Кандинского: беседа с пациентом, психический статус, синдром, диагноз по МКБ-10 и тактика. Пропуски отрабатываются, без отработок к сессии не допустят.\n\n' +
           '**Сессия.** Два экзамена с ситуационными задачами и аккредитация: тест плюс клиническая задача.\n\n' +
           '**Жизнь.** Аренда, еда, сон, стресс и выгорание. Подработки: ночные смены в больнице, курьерство, репетиторство, медкомиссии, онлайн-консультации. Знания дают подсказки «клинического чутья», усталость — отнимает вопросы к пациенту.\n\n' +
+          '**Звук.** Тихий фоновый эмбиент меняется по месту и времени суток: дома иногда мурлычет Кокошка, в дождливые дни слышен дождь, на экзаменах тикают часы. Выключить и настроить громкость можно в меню.\n\n' +
           '**Важно.** Клинические случаи вымышлены и упрощены для обучения. Игра опирается на современные клинические рекомендации, но не заменяет учебник, супервизию и консультацию врача. Не используйте её для самолечения.\n\n' +
           '**Если тяжело вам самим** — обратитесь к врачу или позвоните: **112** — экстренные службы; **8-800-2000-122** — бесплатный телефон доверия для детей, подростков и их родителей.'
       ) +
@@ -494,6 +507,11 @@
       (UI.view.exportCode ? '<label class="field" for="export-code"><span class="label">Ваш код</span><textarea id="export-code" rows="3" readonly>' + U.esc(UI.view.exportCode) + '</textarea></label>' : '') +
       '</section>' +
       '<section class="card"><h2 class="h2">Чекпоинт</h2><p class="dim">Каждый понедельник игра запоминает начало недели. ' + (cp ? 'Последний: ' + C.fmt(cp.day) + '.' : '') + '</p><div class="row-btns"><button type="button" class="btn" data-act="load-cp"' + (cp ? '' : ' aria-disabled="true"') + '>Вернуться к началу недели</button></div></section>' +
+      (S.soundToggle()
+        ? '<section class="card"><h2 class="h2">Звук</h2><p class="dim small">Тихий фоновый эмбиент: меняется по месту и времени суток, в дождь слышно дождь, дома иногда мурлычет Кокошка.</p>' +
+          S.soundToggle() +
+          '<label class="field vol" for="sound-vol"><span class="label">Громкость</span><input id="sound-vol" type="range" min="0" max="100" step="5" value="' + Math.round(A.sound.volume() * 100) + '"' + (A.sound.enabled() ? '' : ' disabled') + '></label></section>'
+        : '') +
       '<section class="card"><h2 class="h2">Чтение</h2><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + !!prefs.bigText + '">' + (prefs.bigText ? 'Обычный текст' : 'Крупный текст') + '</button></div></section>' +
       '<section class="card"><h2 class="h2">Игра</h2><p class="dim small">Режим: ' + U.esc((D.modes[s.mode] || D.modes.full).name) + '.</p><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
       '</main>' +

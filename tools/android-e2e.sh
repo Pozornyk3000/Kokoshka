@@ -202,6 +202,15 @@ step "5. Мост приложения"
 check eval "AnamnezAndroid.copyText('проверка')" | grep -q true || err "копирование в буфер обмена не работает"
 check eval "AnamnezAndroid.version()" | tee "$RES/version.txt"
 
+step "5б. Фоновая музыка"
+check eval "A.sound.setEnabled(true), 1" > /dev/null
+sleep 2
+SND=$(check eval "JSON.stringify(A.sound.status())")
+echo "звук: $SND" | tee "$RES/sound.txt"
+echo "$SND" | grep -q '"state":"running"' || echo "::warning::[$LABEL] звук не заиграл (на эмуляторе без аудиоустройства это возможно): $SND"
+echo "$SND" | grep -q '"error":""' || err "ошибка в фоновой музыке: $SND"
+check eval "A.sound.setEnabled(false), 1" > /dev/null
+
 step "6. Тёмная тема системы"
 adb logcat -c
 adb shell cmd uimode night yes

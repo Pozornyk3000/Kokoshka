@@ -75,6 +75,8 @@ const cdp = flag('--cdp', null) || androidPkg;
     };
     try { localStorage.clear(); } catch (e) {}
   }, seed);
+  // На эмуляторе фоновая музыка — лишняя нагрузка: звук проверяется отдельным шагом
+  if (androidPkg) await page.evaluate(() => window.A.sound && window.A.sound.setEnabled(false));
 
   const shot = async (name) => {
     if (!shots) return;

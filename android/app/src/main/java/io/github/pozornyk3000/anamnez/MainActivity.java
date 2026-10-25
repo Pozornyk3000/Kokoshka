@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -62,6 +63,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        // Кнопки громкости в игре меняют громкость фоновой музыки, а не звонка
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
         root = new FrameLayout(this);
         root.setBackgroundColor(getColor(R.color.paper));
@@ -102,6 +105,8 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        // Фоновая музыка игры (Web Audio) может звучать без отдельного касания: приложение открыл сам игрок
+        s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSupportMultipleWindows(false);
@@ -172,7 +177,8 @@ public class MainActivity extends Activity {
     protected void onPause() {
         if (web != null) {
             // Страховка: игра и так сохраняется после каждого действия
-            web.evaluateJavascript("try{if(window.A&&A.state&&A.store)A.store.writeLocal('save',A.state)}catch(e){}", null);
+            web.evaluateJavascript("try{if(window.A&&A.state&&A.store)A.store.writeLocal('save',A.state)}catch(e){}"
+                    + "try{if(window.A&&A.sound)A.sound.pause()}catch(e){}", null);
             web.onPause();
         }
         super.onPause();
@@ -181,7 +187,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (web != null) web.onResume();
+        if (web != null) {
+            web.onResume();
+            web.evaluateJavascript("try{if(window.A&&A.sound)A.sound.resume()}catch(e){}", null);
+        }
     }
 
     @Override
