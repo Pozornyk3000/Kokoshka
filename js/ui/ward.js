@@ -341,7 +341,7 @@
     if (ro) return rx.time ? '<span class="small">Приём: ' + esc(P.TIMES[rx.time]) + '</span>' : '';
     const f = P.form(item, rx.route);
     const opts = ['am', 'pm'].concat((f.split || 1) > 1 || rx.time === 'split' ? ['split'] : []);
-    const adv = P.timeAdvice(item);
+    const adv = G.hard(A.state) ? null : P.timeAdvice(item);
     return (
       '<div class="seg segb tseg" role="group" aria-label="Время приёма">' +
       opts.map((t) => '<button type="button" class="seg-b" data-act="wd-time" data-arg="' + i + ':' + t + '" aria-pressed="' + (rx.time === t) + '">' + esc(P.TIMES[t]) + (adv === t ? ' ✓' : '') + '</button>').join('') +
@@ -400,7 +400,7 @@
       if (home.length) out += '<h3 class="step-h">Сопутствующие препараты</h3><ul class="home-meds">' + home.map((m) => '<li>' + esc(m.name) + '</li>').join('') + '</ul>';
       return out;
     }
-    if (pt.rx.some((r) => r.kind !== 'int' && P.oral(r.route) && !r.prn)) out += '<p class="small dim">✓ — время приёма по инструкции. Чем меньше приёмов в день, тем реже пропуски.</p>';
+    if (pt.rx.some((r) => r.kind !== 'int' && P.oral(r.route) && !r.prn)) out += '<p class="small dim">' + (G.hard(s) ? '' : '✓ — время приёма по инструкции. ') + 'Чем меньше приёмов в день, тем реже пропуски.</p>';
     out += '<div class="row-btns">' + btn(UI.icon('plus') + ' Назначить препарат', 'wd-add', 'drug', 'primary') + btn('Без лекарств', 'wd-add', 'int', '') + '</div>';
     const home = pt.meds_home || [];
     if (home.length) {
@@ -498,14 +498,16 @@
           forms.map((x) => '<button type="button" class="seg-b" data-act="wd-sroute" data-arg="' + x.route + '" aria-pressed="' + (x.route === sh.route) + '">' + esc(P.ROUTES[x.route]) + '</button>').join('') +
           '</div><p class="small dim">' + esc(f.label || '') + '</p>';
       else body += '<p class="small"><b>Форма:</b> ' + esc(f.label || P.ROUTES[f.route]) + '</p>';
-      if (r) body += '<p class="small">' + (P.oral(sh.route) ? 'Для этого пациента: ' : '') + 'старт ' + P.fmtDose(r.start) + ', терапевтическая ' + P.fmtDose(r.min) + ' — ' + P.fmtDose(r.max) + (P.oral(sh.route) ? ' в сутки' : '') + '.</p>';
-      if (d.titration && d.titration.note) body += '<p class="small dim">Титрация: ' + esc(d.titration.note) + '</p>';
+      const hard = G.hard(s);
+      if (r && !hard) body += '<p class="small">' + (P.oral(sh.route) ? 'Для этого пациента: ' : '') + 'старт ' + P.fmtDose(r.start) + ', терапевтическая ' + P.fmtDose(r.min) + ' — ' + P.fmtDose(r.max) + (P.oral(sh.route) ? ' в сутки' : '') + '.</p>';
+      if (hard) body += '<p class="small dim">Сложная игра: дозы — по справочнику препаратов.</p>';
+      if (d.titration && d.titration.note && !hard) body += '<p class="small dim">Титрация: ' + esc(d.titration.note) + '</p>';
       body +=
         '<div class="doses" role="group" aria-label="Доза">' +
         (f.steps || []).map((x) => '<button type="button" class="dose" data-act="wd-sdose" data-arg="' + x + '" aria-pressed="' + (x === sh.dose) + '">' + num(x) + '</button>').join('') +
         '</div><p class="small dim">' + (f.prn ? 'Разовая доза, вводится по требованию.' : P.oral(sh.route) ? 'мг в сутки' + (f.split > 1 ? ', в ' + f.split + ' приёма' : '') : sh.route === 'patch' ? 'мг за 24 часа' : 'мг на введение') + '</p>';
       if (P.oral(sh.route) && !f.prn) {
-        const adv = P.timeAdvice(d);
+        const adv = hard ? null : P.timeAdvice(d);
         const opts = ['am', 'pm'].concat((f.split || 1) > 1 ? ['split'] : []);
         body +=
           '<p class="small"><b>Когда принимать:</b></p><div class="seg segb" role="group" aria-label="Время приёма">' +
@@ -528,7 +530,14 @@
           .filter((d) => d.group === sh.group)
           .forEach((d) => {
             const on = pt.rx.some((x) => x.id === d.id);
-            body += '<button type="button" class="opt" data-act="wd-sdrug" data-arg="' + d.id + '"><span class="opt-main"><span class="opt-t">' + esc(d.name) + (on ? ' <span class="chip">назначен</span>' : '') + '</span><span class="opt-sub">' + esc(CLS[d.cls] || '') + (d.aka ? ' · ' + esc(d.aka) : '') + '</span></span></button>';
+            let kr = '';
+            if (G.difficulty(s) === 'easy') {
+              const ln = P.line(pt, d).line;
+              if (ln === 'first') kr = ' <span class="chip pos">КР: первая линия</span>';
+              else if (ln === 'second') kr = ' <span class="chip">КР: вторая линия</span>';
+              else if (ln === 'avoid') kr = ' <span class="chip neg">КР: не рекомендуется</span>';
+            }
+            body += '<button type="button" class="opt" data-act="wd-sdrug" data-arg="' + d.id + '"><span class="opt-main"><span class="opt-t">' + esc(d.name) + (on ? ' <span class="chip">назначен</span>' : '') + kr + '</span><span class="opt-sub">' + esc(CLS[d.cls] || '') + (d.aka ? ' · ' + esc(d.aka) : '') + '</span></span></button>';
           });
       }
       body += '</div>';

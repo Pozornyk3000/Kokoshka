@@ -34,7 +34,7 @@
       asked: [],
       rapport: 60 - (s.stress > 70 ? 10 : 0) + (s.rep >= 40 ? 5 : 0),
       repaired: 0,
-      sel: { status: [], syn: null, dx: null, tx: [] },
+      sel: { status: [], syn: null, dx: null, dxKey: null, tx: [] },
       order: {
         q: order(c.q.length),
         status: order(c.status.opts.length),
@@ -44,6 +44,7 @@
       },
       maxQ: Math.max(3, (c.maxQ || 5) - (s.energy < 30 ? 1 : 0) - (s.flags.wokeTired ? 1 : 0)),
       tired: s.energy < 30 || s.flags.wokeTired,
+      hard: G.hard(s),
       hints: CS.hints(s, c, step.mode),
       result: null,
     };
@@ -55,7 +56,11 @@
   /** Подсказки «клинического чутья» в зависимости от знаний темы. */
   CS.hints = function (s, c, mode) {
     const k = s.know[c.topic] || 0;
-    const h = { level: k >= 75 ? 3 : k >= 55 ? 2 : k >= 35 ? 1 : 0 };
+    const diff = G.difficulty(s);
+    let level = k >= 75 ? 3 : k >= 55 ? 2 : k >= 35 ? 1 : 0;
+    if (diff === 'easy') level = Math.min(3, Math.max(1, level + 1));
+    if (diff === 'hard') level = 0;
+    const h = { level };
     const r = U.mulberry32(U.hash(c.id + s.player.name));
     if (h.level >= 1) {
       const keys = c.q.map((q, i) => (q.key || q.crit ? i : -1)).filter((i) => i >= 0);
@@ -153,12 +158,20 @@
 
     if (parts.indexOf('dx') >= 0) {
       const syn = c.syndrome.opts[p.sel.syn];
-      const dx = c.dx.opts[p.sel.dx];
       let f = 0;
       if (syn && syn.ok) f += 0.4;
-      if (dx && dx.ok) f += 0.6;
-      else if (dx && dx.part) f += 0.6 * dx.part;
-      res.dxRight = !!(dx && dx.ok);
+      if (p.hard) {
+        // сложная игра: диагноз выбран из полного списка МКБ-10
+        const j = A.icd.judge(c.dx.opts, p.sel.dxKey);
+        f += 0.6 * j.score;
+        res.dxRight = j.score === 1;
+        res.dxJudge = { key: p.sel.dxKey, score: j.score, cat: !!j.cat, why: j.opt ? j.opt.why || '' : '', right: j.right ? j.right.t : '' };
+      } else {
+        const dx = c.dx.opts[p.sel.dx];
+        if (dx && dx.ok) f += 0.6;
+        else if (dx && dx.part) f += 0.6 * dx.part;
+        res.dxRight = !!(dx && dx.ok);
+      }
       res.synRight = !!(syn && syn.ok);
       res.parts.dx = Math.round(f * W.dx);
     }
@@ -343,6 +356,7 @@
       const qs = [];
       D.lectures.forEach((L) => L.quiz.forEach((q, qi) => qs.push(L.id + ':' + qi)));
       (D.extraTest || []).forEach((q, qi) => qs.push('x:' + qi));
+      (D.testBank || []).forEach((q) => qs.push('t:' + q.id));
       tasks.test = U.shuffle(qs).slice(0, def.test);
     }
     return tasks;
@@ -351,6 +365,7 @@
   EX.testQuestion = function (ref) {
     const [lid, qi] = ref.split(':');
     if (lid === 'x') return D.extraTest[+qi];
+    if (lid === 't') return (D.testBankById || {})[qi] || null;
     const L = D.lectureById[lid];
     return L ? L.quiz[+qi] : null;
   };

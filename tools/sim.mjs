@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Быстрая симуляция игры без интерфейса: проверка движка и баланса экономики.
-   node tools/sim.mjs [дней=160] [--skill 0.75] [--seed 1] [--job hospital] [--bg orderly] [--mode full|doctor] [--stub stub-data.js] [--quiet] */
+   node tools/sim.mjs [дней=160] [--skill 0.75] [--seed 1] [--job hospital] [--bg orderly] [--mode full|doctor] [--difficulty easy|normal|hard] [--stub stub-data.js] [--quiet] */
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -16,6 +16,7 @@ const jobPref = flag('--job', 'hospital');
 const bgPref = flag('--bg', 'orderly');
 const dream = flag('--dream', 'flat');
 const mode = flag('--mode', 'full');
+const difficulty = flag('--difficulty', 'normal');
 const stub = flag('--stub', null);
 const quiet = argv.includes('--quiet');
 
@@ -46,7 +47,7 @@ const CS = A.cases;
 D.index();
 A.migrate = (s) => s;
 
-const s = (A.state = G.newState({ name: 'Тест', gender: 'f', background: bgPref, dream, mode }));
+const s = (A.state = G.newState({ name: 'Тест', gender: 'f', background: bgPref, dream, mode, difficulty }));
 G.queue(s, G.prologue(s), 'prologue');
 
 const chance = (p) => rand() < p;
@@ -66,6 +67,8 @@ function solveCase(c, mode, exam) {
   };
   p.sel.syn = pickOne(c.syndrome.opts);
   p.sel.dx = pickOne(c.dx.opts);
+  // сложная игра: тот же выбор, но ключом полного каталога МКБ-10
+  if (p.hard) p.sel.dxKey = A.icd.entryFor(c.dx.opts[p.sel.dx].t).k;
   c.tx.opts.forEach((o, i) => {
     if (o.ok ? chance(skill) : chance((1 - skill) / (o.bad ? 4 : 2))) p.sel.tx.push(i);
   });
@@ -168,7 +171,9 @@ function ambDay(st) {
     const t = M.tpl(pt);
     if (pt.dxOk == null && t.dxq) {
       const ok = t.dxq.opts.findIndex((o) => o.ok === true);
-      M.chooseDx(s, pt, chance(skill) ? ok : Math.floor(rand() * t.dxq.opts.length));
+      const i = chance(skill) ? ok : Math.floor(rand() * t.dxq.opts.length);
+      if (G.hard(s)) M.chooseDxKey(s, pt, A.icd.entryFor(t.dxq.opts[i].t).k);
+      else M.chooseDx(s, pt, i);
     }
     if (pt.vis.kind === 'first') ['explain', 'safety'].forEach((k) => chance(skill) && M.talk(s, pt, k));
     if (pt.vis.report.some((x) => x.k === 'stopped' || x.k === 'wantsStop') && chance(skill)) M.talk(s, pt, 'adherence');

@@ -32,6 +32,7 @@
       (save ? '<button type="button" class="btn primary" data-act="continue">Продолжить</button>' : '') +
       '<button type="button" class="btn' + (save ? '' : ' primary') + '" data-act="new">Новая игра</button>' +
       '<button type="button" class="btn ghost" data-act="refs-open">Справочники</button>' +
+      '<button type="button" class="btn ghost" data-act="tr-open" data-arg="title">Тренажёр: тесты и задачи</button>' +
       '<button type="button" class="btn ghost" data-act="about">Об игре</button>' +
       '</div>' +
       '<p class="cover-note">' +
@@ -91,7 +92,11 @@
 
   /* ---------- Создание персонажа ---------- */
   S.create = function () {
-    const c = UI.view.create || (UI.view.create = { name: 'Саша', gender: 'm', background: 'excellent', dream: 'flat', mode: 'full' });
+    const c = UI.view.create || (UI.view.create = { name: 'Саша', gender: 'm', background: 'excellent', dream: 'flat', mode: 'full', difficulty: 'normal' });
+    if (!D.difficulty[c.difficulty]) c.difficulty = 'normal';
+    const diffCards = Object.keys(D.difficulty)
+      .map((k) => '<button type="button" class="pick-card" data-act="cr-diff" data-arg="' + k + '" aria-pressed="' + (c.difficulty === k) + '"><span class="pick-t">' + U.esc(D.difficulty[k].name) + '</span><span class="pick-d">' + U.esc(D.difficulty[k].desc) + '</span></button>')
+      .join('');
     const mode = D.modes[c.mode] ? c.mode : 'full';
     const doc = mode === 'doctor';
     const f = c.gender === 'f';
@@ -126,6 +131,7 @@
       '</div></div>' +
       '<div class="field"><span class="label">Предыстория' + (doc ? ' — от неё зависят оценки в дипломе' : '') + '</span><div class="pick-grid">' + bgCards + '</div></div>' +
       '<div class="field"><span class="label">Мечта — цель игры</span><div class="pick-grid">' + dreamCards + '</div></div>' +
+      '<div class="field"><span class="label">Сложность — можно сменить в меню</span><div class="pick-grid">' + diffCards + '</div></div>' +
       '<div class="create-btns"><button type="button" class="btn primary wide" data-act="cr-start">' + U.esc(D.modes[mode].start) + '</button><button type="button" class="btn ghost" data-act="cr-back">Назад</button></div>' +
       '</main>'
     );
@@ -155,6 +161,13 @@
   });
   UI.on('cr-dream', (k) => {
     UI.view.create.dream = k;
+    UI.render();
+  });
+  UI.on('cr-diff', (k) => {
+    if (!D.difficulty[k]) return;
+    const inp = document.getElementById('pname');
+    if (inp) UI.view.create.name = inp.value;
+    UI.view.create.difficulty = k;
     UI.render();
   });
   UI.on('cr-back', () => {
@@ -498,6 +511,7 @@
       '<button type="button" class="btn ghost" data-act="menu-ref" data-arg="gloss">Симптомы</button>' +
       '<button type="button" class="btn ghost" data-act="menu-ref" data-arg="notes">Конспекты</button>' +
       '</div></section>' +
+      '<section class="card"><h2 class="h2">Тренажёр</h2><p class="dim small">Тесты как на аккредитации, тесты по темам, работа над ошибками и задачи «поставьте диагноз по МКБ-10». На игру не влияет.</p><div class="row-btns"><button type="button" class="btn" data-act="tr-open" data-arg="game">Открыть тренажёр</button></div></section>' +
       '<section class="card"><h2 class="h2">Сохранение</h2><p class="dim">' +
       (cloud === 'on'
         ? 'Игра сохраняется автоматически: в этом браузере и в вашем личном облачном разделе Claude.'
@@ -516,6 +530,9 @@
           '<label class="field vol" for="sound-vol"><span class="label">Громкость</span><input id="sound-vol" type="range" min="0" max="100" step="5" value="' + Math.round(A.sound.volume() * 100) + '"' + (A.sound.enabled() ? '' : ' disabled') + '></label></section>'
         : '') +
       '<section class="card"><h2 class="h2">Чтение</h2><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + !!prefs.bigText + '">' + (prefs.bigText ? 'Обычный текст' : 'Крупный текст') + '</button></div></section>' +
+      '<section class="card"><h2 class="h2">Сложность</h2><p class="dim small">' + U.esc(D.difficulty[G.difficulty(s)].desc) + '</p><div class="seg segb" role="group" aria-label="Сложность">' +
+      Object.keys(D.difficulty).map((k) => '<button type="button" class="seg-b" data-act="set-diff" data-arg="' + k + '" aria-pressed="' + (G.difficulty(s) === k) + '">' + U.esc(D.difficulty[k].name) + '</button>').join('') +
+      '</div><p class="small dim">Новая сложность действует со следующего пациента.</p></section>' +
       '<section class="card"><h2 class="h2">Игра</h2><p class="dim small">Режим: ' + U.esc((D.modes[s.mode] || D.modes.full).name) + '.</p><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
       '</main>' +
       UI.tabbar('menu')
@@ -585,6 +602,14 @@
       UI.view.tab = 'hub';
       UI.render({ scroll: 'top' });
     });
+  });
+  UI.on('set-diff', (k) => {
+    const s = A.state;
+    if (!s || !D.difficulty[k]) return;
+    s.difficulty = k;
+    G.save();
+    UI.render();
+    UI.toast('Сложность: ' + U.esc(D.difficulty[k].name.toLowerCase()) + '.');
   });
   UI.on('big-text', () => {
     A.store.setPref('bigText', !A.store.prefs().bigText);

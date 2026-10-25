@@ -292,4 +292,86 @@ export const PLANS = {
     },
     bad: { visit: (k) => ({ acts: [], next: 28 }), monitor: false, decide: 'worst' },
   },
+
+  a_gad_new: {
+    ideal: {
+      dx: 0,
+      visit: (k, pt) =>
+        at(
+          {
+            0: { acts: [['talk', 'explain'], ['talk', 'goal'], ['talk', 'alcohol'], ['rx', 'escitalopram', 'po', 5], ['int', 'psychotherapy_cbt']], next: 3 },
+            1: { acts: [['dose', 'escitalopram', 10]], next: 7 },
+            2: { acts: sev(pt) > 35 ? [['dose', 'escitalopram', 15]] : [], next: 14 },
+          },
+          k,
+          { acts: [], next: auto(pt) }
+        ),
+    },
+    bad: { dx: 1, visit: (k) => at({ 0: { acts: [['rx', 'phenazepam', 'po', 1.5]], next: 28 } }, k, { acts: [], next: 28 }), monitor: false, decide: 'worst' },
+  },
+
+  a_postpartum: {
+    ideal: {
+      dx: 0,
+      visit: (k, pt) =>
+        at(
+          {
+            0: { acts: [['talk', 'explain'], ['talk', 'safety'], ['talk', 'family'], ['rx', 'sertraline', 'po', 25]], next: 3 },
+            1: { acts: [['dose', 'sertraline', 50]], next: 7 },
+            2: { acts: sev(pt) > 30 ? [['dose', 'sertraline', 100]] : [], next: 14 },
+          },
+          k,
+          { acts: [], next: auto(pt) }
+        ),
+    },
+    bad: { dx: 2, visit: (k) => ({ acts: [], next: 28 }), monitor: false, decide: 'worst' },
+  },
+
+  a_scz_first: {
+    ideal: {
+      dx: 0,
+      visit: (k, pt) =>
+        at(
+          {
+            0: { acts: [['talk', 'explain'], ['talk', 'family'], ['order', 'tox'], ['order', 'glucose'], ['order', 'lipids'], ['order', 'ecg'], ['order', 'prolactin'], ['rx', 'aripiprazole', 'po', 10], ['int', 'day_hospital']], next: 3 },
+            1: { acts: sev(pt) > 35 ? [['dose', 'aripiprazole', 15]] : [], next: 7 },
+          },
+          k,
+          { acts: [], next: Math.min(14, auto(pt)) }
+        ),
+    },
+    bad: { dx: 3, visit: (k) => at({ 0: { acts: [['rx', 'haloperidol', 'po', 15], ['rx', 'trihexyphenidyl', 'po', 4]], next: 28 } }, k, { acts: [], next: 28 }), monitor: false, decide: 'worst' },
+  },
+
+  a_dementia_bpsd: {
+    ideal: {
+      visit: (k, pt) =>
+        at(
+          {
+            0: { acts: [['talk', 'family'], ['talk', 'explain'], ['order', 'ecg'], ['order', 'bio'], ['order', 'cbc'], ['int', 'dementia_care'], ['rx', 'memantine', 'po', 5], ['dose', 'haloperidol', 1.5], ['dose', 'phenazepam', 0.5]], next: 7 },
+            1: { acts: [['dose', 'memantine', 10], ['stop', 'haloperidol']], next: 7 },
+            2: { acts: [['dose', 'phenazepam', 0.25], ['dose', 'memantine', 15]], next: 7 },
+            3: { acts: [['stop', 'phenazepam'], ['dose', 'memantine', 20]], next: 14 },
+          },
+          k,
+          { acts: [], next: 14 }
+        ),
+    },
+    bad: { visit: (k) => at({ 0: { acts: [['dose', 'haloperidol', 5], ['dose', 'phenazepam', 2]], next: 28 } }, k, { acts: [], next: 28 }), monitor: false, decide: 'worst' },
+  },
+
+  a_dep_resistant: {
+    ideal: {
+      visit: (k, pt) =>
+        at(
+          {
+            0: { acts: [['talk', 'explain'], ['talk', 'safety'], ['talk', 'goal'], ['order', 'tsh'], ['dose', 'escitalopram', 15], ['int', 'psychotherapy_cbt']], next: 7 },
+            1: { acts: [['dose', 'escitalopram', 20]], next: 14 },
+          },
+          k,
+          { acts: [], next: auto(pt) }
+        ),
+    },
+    bad: { visit: (k) => at({ 0: { acts: [['rx', 'amitriptyline', 'po', 75], ['rx', 'phenazepam', 'po', 1]], next: 28 } }, k, { acts: [], next: 28 }), monitor: false, decide: 'worst' },
+  },
 };

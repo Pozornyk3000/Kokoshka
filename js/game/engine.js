@@ -28,6 +28,7 @@
         dream: opt.dream,
       },
       mode: opt.mode === 'doctor' ? 'doctor' : 'full',
+      difficulty: D.difficulty && D.difficulty[opt.difficulty] ? opt.difficulty : 'normal',
       day: 1,
       slot: 0,
       money: bg.money,
@@ -107,6 +108,9 @@
     s.study.accr = { day: null, date: '11 июля', pct: dc.accrPct, testPct: Math.min(100, dc.accrPct + 3) };
     return s;
   };
+  /** Сложность: easy | normal | hard (сложная — диагноз из полного списка МКБ-10, без подсказок). */
+  G.difficulty = (s) => (s && D.difficulty && D.difficulty[s.difficulty] ? s.difficulty : 'normal');
+  G.hard = (s) => G.difficulty(s) === 'hard';
   /** Начальные сцены новой игры: пролог ординатуры или первый день врача. */
   G.prologue = function (s) {
     if (s.mode === 'doctor') return [{ type: 'story', story: 'doctor_home' }, { type: 'story', story: 'doctor_offers' }, { type: 'jobs' }];

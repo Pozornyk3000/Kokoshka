@@ -61,14 +61,16 @@ jobs:
           fi
           node tools/build.mjs --out dist
 
-      - name: Браузерные проверки (автоигрок и мост Android)
+      - name: Браузерные проверки (тренажёр, автоигрок и мост Android)
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
           node tools/bridge-test.cjs docs/index.html
           node tools/sound-check.cjs docs/index.html
+          node tools/trainer-check.cjs docs/index.html
           node tools/autoplay.cjs docs/index.html 400 --smart --days 10
           node tools/autoplay.cjs docs/index.html 700 --smart --mode doctor --job pnd --days 18
+          node tools/autoplay.cjs docs/index.html 400 --smart --days 8 --difficulty hard --seed 2
 
       - uses: actions/setup-java@v4
         with:

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Автоигрок: проходит игру через интерфейс в headless Chromium и ловит ошибки.
-   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart] [--mode full|doctor] [--job pnd|hospital|private|uni]
+   NODE_PATH=/opt/node22/lib/node_modules node tools/autoplay.cjs <page.html> [шагов=600] [--shots DIR] [--seed N] [--days N] [--dark] [--smart] [--mode full|doctor] [--job pnd|hospital|private|uni] [--difficulty easy|normal|hard]
    Внутри приложения Android (отладочная сборка на устройстве или эмуляторе, подключённом через adb):
    node tools/autoplay.cjs - 300 --android io.github.pozornyk3000.anamnez --smart
    К уже запущенному Chromium по DevTools: --cdp http://127.0.0.1:9222 */
@@ -106,6 +106,7 @@ const cdp = flag('--cdp', null) || androidPkg;
   await click('[data-act="mode-pick"][data-arg="' + mode + '"]');
   await shot('01-create');
   await click('[data-act="cr-bg"][data-arg="orderly"]');
+  if (flag('--difficulty', null)) await click('[data-act="cr-diff"][data-arg="' + flag('--difficulty', null) + '"]');
   await click('[data-act="cr-start"]');
 
   const seenTypes = {};
@@ -337,6 +338,20 @@ const cdp = flag('--cdp', null) || androidPkg;
             window.__am.skip[pt.uid] = 1;
             return cl('[data-act="am-back"]') ? 'am-back' : null;
           }
+          if (document.querySelector('[data-act="am-dx-key"]')) {
+            // сложная игра: диагноз из полного списка МКБ-10
+            if (!A.ui.view.amDxKey) {
+              const okO = M.tpl(pt).dxq.opts.find((o) => o.ok === true);
+              if (smart && Math.random() < 0.85) {
+                A.ui.view.amDxKey = A.icd.entryFor(okO.t).k;
+                A.ui.render();
+                return 'am-icd-smart';
+              }
+              if (cl('[data-act="am-icd"]:nth-of-type(' + (1 + Math.floor(Math.random() * 3)) + ')') || cl('[data-act="am-icd"]')) return 'am-icd';
+              return cl('[data-act="icd-block"][data-arg="' + rnd(['F2', 'F3', 'F4', 'F1', 'F0']) + '"]') ? 'icd-block' : null;
+            }
+            return cl('[data-act="am-dx-key"]') ? 'am-dx-key' : null;
+          }
           if (document.querySelector('[data-act="am-dx"]')) {
             const t = M.tpl(pt);
             const ok = t.dxq.opts.findIndex((o) => o.ok === true);
@@ -426,6 +441,8 @@ const cdp = flag('--cdp', null) || androidPkg;
           if (p.stage === 'dx') {
             p.sel.syn = ok() ? c.syndrome.opts.findIndex((o) => o.ok) : 0;
             p.sel.dx = ok() ? c.dx.opts.findIndex((o) => o.ok) : 0;
+            // сложная игра: тот же выбор, но ключом каталога МКБ-10
+            if (p.hard) p.sel.dxKey = A.icd.entryFor(c.dx.opts[p.sel.dx].t).k;
             A.ui.render();
             return cl('[data-act="cs-submit"]') ? 'smart-dx' : null;
           }
@@ -492,6 +509,19 @@ const cdp = flag('--cdp', null) || androidPkg;
             rnd(groups[g]).click();
             return 'radio';
           }
+        }
+      }
+      // сложная игра: диагноз из полного списка — открыть раздел и выбрать рубрику
+      if (document.getElementById('icd-q') && !document.querySelector('.icd-sel')) {
+        const items = q('[data-act="cs-icd"]');
+        if (items.length) {
+          rnd(items.slice(0, 8)).click();
+          return 'icd-pick';
+        }
+        const blocks = q('[data-act="icd-block"]');
+        if (blocks.length) {
+          rnd(blocks).click();
+          return 'icd-block';
         }
       }
       const sub = q('[data-act="cs-submit"]');

@@ -229,6 +229,7 @@
     if (!c) return '<p>Случай не найден.</p>' + btn('Дальше', 'step-next', null, 'primary wide');
     if (!step.p) {
       step.p = CS.init(s, step);
+      if (UI.icd) UI.icd.reset();
       G.save();
     }
     return ACT.caseView(s, c, step.p, step.mode, step);
@@ -367,15 +368,16 @@
         .join('') +
       '</div>';
     out += group('Ведущий синдром', 'syn', c.syndrome.opts, p.order.syn, p.sel.syn, null);
-    out += group('Диагноз по МКБ-10', 'dx', c.dx.opts, p.order.dx, p.sel.dx, p.hints.dx);
-    out += '<div class="next-row">' + btn('Поставить диагноз', 'cs-submit', 'dx', 'primary wide', p.sel.syn == null || p.sel.dx == null) + '</div>';
+    if (p.hard) out += '<h2 class="step-h">Диагноз по МКБ-10 <span class="dim">полный список</span></h2>' + UI.icd.picker({ act: 'cs-icd', sel: p.sel.dxKey });
+    else out += group('Диагноз по МКБ-10', 'dx', c.dx.opts, p.order.dx, p.sel.dx, p.hints.dx);
+    out += '<div class="next-row">' + btn('Поставить диагноз', 'cs-submit', 'dx', 'primary wide', p.sel.syn == null || (p.hard ? !p.sel.dxKey : p.sel.dx == null)) + '</div>';
     return out;
   };
 
   ACT.txStage = function (s, c, p, mode) {
     let out = '';
-    const dx = c.dx.opts[p.sel.dx];
-    if (dx) out += '<p class="dx-line"><span class="eyebrow">Ваш диагноз</span><span class="hand">' + U.esc(dx.t) + '</span></p>';
+    const dxText = p.hard ? A.icd.label(p.sel.dxKey) : c.dx.opts[p.sel.dx] ? c.dx.opts[p.sel.dx].t : '';
+    if (dxText) out += '<p class="dx-line"><span class="eyebrow">Ваш диагноз</span><span class="hand">' + U.esc(dxText) + '</span></p>';
     out += '<h2 class="step-h">Что вы сделаете? <span class="dim">Выберите все нужные шаги</span></h2><div class="opts">';
     out += p.order.tx
       .map((i) => {
@@ -430,7 +432,17 @@
       const dxOk = c.dx.opts.find((o) => o.ok);
       out += '<h2 class="step-h">Синдром и диагноз</h2><ul class="marks">';
       out += syn && syn.ok ? '<li class="m-ok">' + U.esc(syn.t) + '</li>' : '<li class="m-bad">' + U.esc(syn ? syn.t : '—') + (syn && syn.why ? '<span class="m-def">' + U.esc(syn.why) + '</span>' : '') + '</li><li class="m-miss">Верно: ' + U.esc(synOk.t) + '</li>';
-      out += dx && dx.ok ? '<li class="m-ok">' + U.esc(dx.t) + '</li>' : '<li class="m-bad">' + U.esc(dx ? dx.t : '—') + (dx && dx.why ? '<span class="m-def">' + U.esc(dx.why) + '</span>' : '') + '</li><li class="m-miss">Верно: ' + U.esc(dxOk.t) + '</li>';
+      if (p.hard) {
+        const j = r.dxJudge || A.icd.judge(c.dx.opts, p.sel.dxKey);
+        const why = j.why != null ? j.why : j.opt ? j.opt.why : '';
+        const lbl = A.icd.label(p.sel.dxKey) || '—';
+        if (j.score === 1) out += '<li class="m-ok">' + U.esc(lbl) + '</li>';
+        else
+          out +=
+            '<li class="' + (j.score > 0 ? 'm-miss' : 'm-bad') + '">' + U.esc(lbl) + (j.score > 0 ? ' <span class="dim">— частично</span>' : '') +
+            (why ? '<span class="m-def">' + U.esc(why) + '</span>' : j.cat ? '<span class="m-def">Рубрика верная, но уточнение (четвёртый знак) — другое.</span>' : '') +
+            '</li><li class="m-miss">Верно: ' + U.esc(dxOk.t) + '</li>';
+      } else out += dx && dx.ok ? '<li class="m-ok">' + U.esc(dx.t) + '</li>' : '<li class="m-bad">' + U.esc(dx ? dx.t : '—') + (dx && dx.why ? '<span class="m-def">' + U.esc(dx.why) + '</span>' : '') + '</li><li class="m-miss">Верно: ' + U.esc(dxOk.t) + '</li>';
       out += '</ul>';
     }
     if (p.parts.indexOf('tx') >= 0) {
@@ -488,11 +500,18 @@
     G.save();
     UI.render();
   });
+  UI.on('cs-icd', (key) => {
+    const x = ACT.cur();
+    if (!x || !A.icd.get(key)) return;
+    x.p.sel.dxKey = key;
+    G.save();
+    UI.render();
+  });
   UI.on('cs-submit', (stage) => {
     const x = ACT.cur();
     const p = x.p;
     if (stage === 'status' && !p.sel.status.length) return;
-    if (stage === 'dx' && (p.sel.syn == null || p.sel.dx == null)) return;
+    if (stage === 'dx' && (p.sel.syn == null || (p.hard ? !p.sel.dxKey : p.sel.dx == null))) return;
     if (stage === 'tx' && !p.sel.tx.length) return;
     const next = p.parts[p.parts.indexOf(stage) + 1];
     if (next) p.stage = next;
@@ -517,7 +536,10 @@
     const ep = x.ep;
     ep.scores.push(x.p.result.score);
     ep.ti++;
-    if (ep.ti < ep.cases.length) ep.task = CS.init(x.s, { id: ep.cases[ep.ti], mode: 'exam', exam: x.exam });
+    if (ep.ti < ep.cases.length) {
+      ep.task = CS.init(x.s, { id: ep.cases[ep.ti], mode: 'exam', exam: x.exam });
+      if (UI.icd) UI.icd.reset();
+    }
     else {
       ep.task = null;
       ep.stage = 'result';
@@ -568,6 +590,7 @@
     if (p.stage === 'tasks') {
       if (!p.task) {
         p.task = CS.init(s, { id: p.cases[p.ti], mode: 'exam', exam: step.exam });
+        if (UI.icd) UI.icd.reset();
         G.save();
       }
       const c = D.caseById[p.cases[p.ti]];

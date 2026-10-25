@@ -24,6 +24,7 @@
     if (UI.view.screen === 'create') html = UI.screens.create();
     else if (UI.view.screen === 'mode') html = UI.screens.mode();
     else if (UI.view.screen === 'refs') html = UI.screens.refs();
+    else if (UI.view.screen === 'trainer') html = UI.screens.trainer();
     else if (UI.view.screen === 'about') html = UI.screens.about();
     else if (!s) html = UI.screens.title();
     else if (s.activity) html = UI.act.render(s);
@@ -371,6 +372,13 @@
       UI.render();
       return true;
     }
+    if (v.screen === 'trainer') {
+      if (v.trainer && v.trainer.run) {
+        v.trainer.run = null;
+        UI.render({ scroll: 'top' });
+      } else UI.handlers['tr-exit']();
+      return true;
+    }
     if (v.screen === 'about' || v.screen === 'mode' || v.screen === 'refs') {
       v.screen = null;
       UI.render({ scroll: 'top' });
@@ -380,6 +388,17 @@
     if (s && s.activity) {
       // в отделении «назад» закрывает лист назначения и возвращает из истории болезни к списку
       const step = s.activity.steps[s.activity.i];
+      const ap = step && step.type === 'amb' ? step.p : null;
+      if (ap && (ap.sheet || ap.summary || ap.open)) {
+        if (ap.sheet) ap.sheet = null;
+        else if (ap.summary) {
+          ap.summary = null;
+          A.clinic.archiveDone(s);
+        } else ap.open = null;
+        G.save();
+        UI.render({ scroll: 'top' });
+        return true;
+      }
       const p = step && step.type === 'ward' ? step.p : null;
       if (p && (p.sheet || p.summary || p.open)) {
         if (p.sheet) p.sheet = null;

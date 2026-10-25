@@ -269,7 +269,10 @@
     if (v.labs && v.labs.length) out += sec('Готовые результаты', '<ul class="results">' + v.labs.map((x) => '<li' + (x.flag ? ' class="flag"' : '') + '><b>' + esc(P.TESTS[x.test].name) + '</b>: ' + esc(x.text) + '</li>').join('') + '</ul>');
     if (v.injected) out += '<p class="note">' + UI.icon('check') + ' Процедурный кабинет: инъекция ' + esc(P.drug(v.injected).name.toLowerCase()) + ' выполнена.</p>';
     // предварительный диагноз
-    if (isNew(pt) && t.dxq && t.dxq.opts) {
+    if (isNew(pt) && t.dxq && t.dxq.opts && pt.dxOk == null && G.hard(s)) {
+      out += '<h3 class="step-h">Предварительный диагноз <span class="dim">полный список МКБ-10</span></h3>' + UI.icd.picker({ act: 'am-icd', sel: UI.view.amDxKey || null });
+      out += '<div class="row-btns">' + btn('Поставить диагноз', 'am-dx-key', null, 'primary', !UI.view.amDxKey) + '</div>';
+    } else if (isNew(pt) && t.dxq && t.dxq.opts) {
       if (pt.dxOk == null) {
         const order = t.dxq.opts.map((o2, i) => i).sort((a, b) => U.hash(pt.seed + ':' + a) - U.hash(pt.seed + ':' + b));
         out +=
@@ -278,8 +281,8 @@
           '</div>';
       }
       else if (v.kind === 'first') {
-        const o2 = t.dxq.opts[pt.dxPick] || {};
-        out += '<div class="pearl plain dx-res ' + (pt.dxOk === true ? 'ok' : pt.dxOk === 'part' ? 'part' : 'bad') + '"><span class="eyebrow">' + (pt.dxOk === true ? 'Диагноз верный' : pt.dxOk === 'part' ? 'Частично верно' : 'Диагноз поправил заведующий') + '</span><p><b>' + esc(pt.dx) + '.</b> ' + esc(o2.why || '') + '</p></div>';
+        const why = pt.dxWhy != null ? pt.dxWhy : (t.dxq.opts[pt.dxPick] || {}).why || '';
+        out += '<div class="pearl plain dx-res ' + (pt.dxOk === true ? 'ok' : pt.dxOk === 'part' ? 'part' : 'bad') + '"><span class="eyebrow">' + (pt.dxOk === true ? 'Диагноз верный' : pt.dxOk === 'part' ? 'Частично верно' : 'Диагноз поправил заведующий') + '</span>' + (pt.dxOk !== true && pt.dxText ? '<p class="small">Ваш вариант: ' + esc(pt.dxText) + '</p>' : '') + '<p><b>' + esc(pt.dx) + '.</b> ' + esc(why) + '</p></div>';
       }
     }
     // беседа
@@ -426,6 +429,10 @@
     if (!p) return;
     const pt = M.byUid(s, uid);
     if (!pt) return;
+    if (p.open !== uid) {
+      UI.view.amDxKey = null;
+      if (UI.icd) UI.icd.reset();
+    }
     p.open = uid;
     p.sheet = null;
     if (p.fb && p.fb.uid !== uid) p.fb = null;
@@ -491,6 +498,21 @@
     const { s, p, pt } = cur();
     if (!pt) return;
     const r = M.chooseDx(s, pt, +i);
+    if (r) H.fb(p, pt, 'Предварительный диагноз', [{ lvl: r.ok === true ? 'ok' : r.ok === 'part' ? 'warn' : 'err', text: (r.ok === true ? '' : 'Верный диагноз: ' + r.right + '. ') + r.why }]);
+    save();
+  });
+  UI.on('am-icd', (key) => {
+    const { p } = cur();
+    if (!p || !A.icd.get(key)) return;
+    UI.view.amDxKey = key;
+    UI.render();
+  });
+  UI.on('am-dx-key', () => {
+    const { s, p, pt } = cur();
+    if (!pt || !UI.view.amDxKey) return;
+    const r = M.chooseDxKey(s, pt, UI.view.amDxKey);
+    UI.view.amDxKey = null;
+    if (UI.icd) UI.icd.reset();
     if (r) H.fb(p, pt, 'Предварительный диагноз', [{ lvl: r.ok === true ? 'ok' : r.ok === 'part' ? 'warn' : 'err', text: (r.ok === true ? '' : 'Верный диагноз: ' + r.right + '. ') + r.why }]);
     save();
   });

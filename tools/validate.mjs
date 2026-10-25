@@ -118,6 +118,13 @@ for (const c of D.cases || []) {
   if (!q.some((x) => x.key || x.crit)) errors.push(`${w}: нет ключевых вопросов (key/crit)`);
   if (!q.some((x) => x.v < 0)) errors.push(`${w}: нужен хотя бы один неудачный вопрос (v<0, bad, rap<0)`);
   if (typeof c.maxQ !== 'number' || c.maxQ < 3 || c.maxQ >= q.length) errors.push(`${w}: maxQ от 3 и меньше числа вопросов`);
+  // Идеальный расспрос (все обязательные вопросы + самые полезные) должен давать максимум за беседу
+  const crit = q.filter((x) => x.crit);
+  if (crit.length > c.maxQ) errors.push(`${w}: обязательных вопросов (crit) ${crit.length} — больше, чем можно задать (maxQ ${c.maxQ})`);
+  const bestQ = q.map((x) => x.v).filter((v) => v > 0).sort((a, b) => b - a).slice(0, c.maxQ).reduce((a, b) => a + b, 0);
+  const restQ = q.filter((x) => !x.crit && x.v > 0).map((x) => x.v).sort((a, b) => b - a);
+  const idealQ = crit.reduce((a, x) => a + Math.max(0, x.v), 0) + restQ.slice(0, Math.max(0, c.maxQ - crit.length)).reduce((a, b) => a + b, 0);
+  if (crit.length <= c.maxQ && idealQ < bestQ) warns.push(`${w}: расспрос с обязательными вопросами набирает ${idealQ} из ${bestQ} — поднимите v у вопросов crit`);
   const st = c.status || {};
   if (!str(st.text, 60)) errors.push(`${w}: status.text короткий`);
   const so = st.opts || [];
@@ -197,7 +204,31 @@ for (const k of Object.keys(D.endings || {})) {
 }
 (D.extraTest || []).forEach((q, i) => {
   if (!str(q.q) || !Array.isArray(q.opts) || typeof q.ok !== 'number' || q.ok >= q.opts.length || !str(q.why, 15)) errors.push(`extraTest[${i}]: формат {q, opts, ok, why}`);
+  if (q.topic && !DOMAINS.includes(q.topic)) errors.push(`extraTest[${i}]: неверный topic ${q.topic}`);
 });
+
+/* ---------- Банк тестовых вопросов (тренажёр и тест аккредитации) ---------- */
+const qTexts = new Map();
+const normQ = (t) => String(t || '').toLowerCase().replace(/ё/g, 'е').replace(/[^а-яa-z0-9]+/g, ' ').trim();
+(D.lectures || []).forEach((L) => (L.quiz || []).forEach((q, i) => qTexts.set(normQ(q.q), `лекция ${L.id}, вопрос ${i}`)));
+(D.extraTest || []).forEach((q, i) => qTexts.set(normQ(q.q), `extraTest[${i}]`));
+for (const q of D.testBank || []) {
+  const w = `testBank.${q.id}`;
+  seen('t:' + q.id, w);
+  if (!/^[a-z]{2}\d\d$/.test(q.id || '')) errors.push(`${w}: id вида af01`);
+  if (!DOMAINS.includes(q.topic)) errors.push(`${w}: неверный topic ${q.topic}`);
+  if (!str(q.q, 15)) errors.push(`${w}: нет текста вопроса`);
+  if (!Array.isArray(q.opts) || q.opts.length !== 4 || q.opts.some((o) => !str(o))) errors.push(`${w}: нужно ровно 4 непустых варианта`);
+  else if (new Set(q.opts.map(normQ)).size !== 4) errors.push(`${w}: повторяющиеся варианты`);
+  if (!Number.isInteger(q.ok) || q.ok < 0 || q.ok >= (q.opts || []).length) errors.push(`${w}: неверный ok`);
+  if (!str(q.why, 60)) errors.push(`${w}: короткое пояснение why`);
+  const n = normQ(q.q);
+  if (qTexts.has(n)) errors.push(`${w}: вопрос повторяет ${qTexts.get(n)}`);
+  else qTexts.set(n, w);
+  [q.q, q.why].concat(q.opts || []).forEach((t) => badChars(t, w));
+}
+const byTopic = {};
+for (const q of D.testBank || []) byTopic[q.topic] = (byTopic[q.topic] || 0) + 1;
 
 /* ---------- Отделение: формуляр, КР, пациенты, тексты ---------- */
 // Модуль фармакологии нужен для групп пациентов и меток (загружаем движок без интерфейса)
@@ -394,6 +425,38 @@ if (drugs.length || (D.wardPatients || []).length) {
   for (const x of allText) if (/\{(?!P\})(?!\{)[^{}]*\}/.test(x.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, ''))) errors.push(`wardTexts: одинарные фигурные скобки (форма по полу игрока) в «${x.slice(0, 50)}»`);
 }
 
+/* ---------- МКБ-10: каталог и варианты диагнозов в задачах ---------- */
+if ((D.icd || []).length) {
+  vm.runInContext(fs.readFileSync(path.join(root, 'js/game/icd.js'), 'utf8'), ctx, { filename: 'icd.js' });
+  const I = ctx.A.icd;
+  const keys = new Set();
+  const blocks = new Set((D.icdBlocks || []).map((b) => b.id));
+  for (const e of D.icd) {
+    if (keys.has(e.k)) errors.push(`icd: повтор ключа ${e.k}`);
+    keys.add(e.k);
+    if (!str(e.c) || !str(e.t, 3)) errors.push(`icd.${e.k}: нет кода или названия`);
+    if (!blocks.has(e.b)) errors.push(`icd.${e.k}: неизвестный раздел ${e.b}`);
+    if (e.b !== 'X' && !/^F\d\d(\.\d{1,2})?$/.test(e.c)) errors.push(`icd.${e.k}: код раздела F должен быть вида F32.1`);
+  }
+  const checkOpts = (opts, where, okOf) => {
+    for (const t of I.unmatched(opts)) errors.push(`${where}: вариант диагноза «${t.slice(0, 60)}» не найден в каталоге МКБ-10`);
+    const right = opts.filter((o) => okOf(o) === 1);
+    for (const o of right) {
+      const e = I.entryFor(o.t);
+      if (e && I.judge(opts, e.k, okOf).score !== 1) errors.push(`${where}: верный вариант «${o.t.slice(0, 50)}» не засчитывается при выборе из списка`);
+    }
+    const seenK = new Map();
+    for (const o of opts) {
+      const e = I.entryFor(o.t);
+      if (!e) continue;
+      if (seenK.has(e.k)) errors.push(`${where}: варианты «${seenK.get(e.k).slice(0, 40)}» и «${o.t.slice(0, 40)}» ведут к одной записи каталога ${e.k}`);
+      else seenK.set(e.k, o.t);
+    }
+  };
+  for (const c of D.cases || []) checkOpts((c.dx || {}).opts || [], `случай ${c.id}.dx`, (o) => (o.ok ? 1 : 0));
+  for (const t of D.ambPatients || []) if (t.kind === 'new') checkOpts((t.dxq || {}).opts || [], `ambPatients.${t.id}.dxq`, (o) => (o.ok === true ? 1 : o.ok === 'part' ? 0.5 : 0));
+}
+
 const counts = {
   лекций: (D.lectures || []).length,
   случаев: (D.cases || []).length,
@@ -404,8 +467,11 @@ const counts = {
   препаратов: (D.drugs || []).length,
   'пациентов отделения': (D.wardPatients || []).length,
   'амбулаторных пациентов': (D.ambPatients || []).length,
+  'вопросов банка': (D.testBank || []).length,
+  'рубрик МКБ': (D.icd || []).length,
 };
 console.log('Загружено:', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', '));
+if ((D.testBank || []).length) console.log('Банк вопросов по темам:', DOMAINS.map((k) => `${k} ${byTopic[k] || 0}`).join(', '));
 warns.forEach((w) => console.log('  ⚠ ' + w));
 errors.forEach((e) => console.log('  ✗ ' + e));
 console.log(errors.length ? `Ошибок: ${errors.length}` : 'Ошибок нет.');

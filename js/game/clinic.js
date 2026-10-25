@@ -900,10 +900,29 @@
     if (!o || pt.dxOk != null) return null;
     pt.dxOk = o.ok === true ? true : o.ok === 'part' ? 'part' : false;
     pt.dxPick = i;
+    pt.dxText = o.t;
+    pt.dxWhy = o.why || '';
     if (o.ok === true) pt.rev.ok++;
     pt.rev.list.push({ day: s.day, lvl: o.ok === true ? 'ok' : o.ok === 'part' ? 'warn' : 'err', text: 'Диагноз «' + o.t + '»: ' + o.why });
     W().log(s, pt, 'Предварительный диагноз: ' + o.t + (o.ok === true ? '.' : ' — исправлен заведующим на ' + pt.dx + '.'));
     return { ok: o.ok, why: o.why, right: pt.dx };
+  };
+
+  /** Диагноз из полного списка МКБ-10 (сложная игра). Возвращает { ok, why, right }. */
+  M.chooseDxKey = function (s, pt, key) {
+    const t = tpl(pt);
+    if (!t.dxq || !t.dxq.opts || pt.dxOk != null || !A.icd.get(key)) return null;
+    const okOf = (o) => (o.ok === true ? 1 : o.ok === 'part' ? 0.5 : 0);
+    const j = A.icd.judge(t.dxq.opts, key, okOf);
+    const label = A.icd.label(key);
+    pt.dxOk = j.score === 1 ? true : j.score > 0 ? 'part' : false;
+    pt.dxKey = key;
+    pt.dxText = label;
+    pt.dxWhy = j.opt && j.opt.why ? j.opt.why : j.score === 1 ? (j.right && j.right.why) || '' : j.cat ? 'Рубрика верная, но уточнение другое.' : 'Этот диагноз не объясняет картину. ' + ((j.right && j.right.why) || '');
+    if (pt.dxOk === true) pt.rev.ok++;
+    pt.rev.list.push({ day: s.day, lvl: pt.dxOk === true ? 'ok' : pt.dxOk === 'part' ? 'warn' : 'err', text: 'Диагноз «' + label + '»: ' + pt.dxWhy });
+    W().log(s, pt, 'Предварительный диагноз: ' + label + (pt.dxOk === true ? '.' : ' — исправлен заведующим на ' + pt.dx + '.'));
+    return { ok: pt.dxOk, why: pt.dxWhy, right: pt.dx };
   };
 
   /* ---------- Беседа на приёме ---------- */
@@ -918,7 +937,12 @@
     sleep: { name: 'Гигиена сна и дневник сна', short: 'Сон' },
     pregnancy: { name: 'Обсудить планирование беременности и контрацепцию', short: 'Беременность', when: (pt) => pt.sex === 'f' && pt.age >= 16 && pt.age <= 48 },
   };
-  M.talkName = (pt, k) => M.TALKS[k].name.replace('{REL_LC}', (pt.rel || 'близких').toLowerCase() === 'мама' ? 'маму' : (pt.rel || 'близких').toLowerCase() === 'дочь' ? 'дочь' : (pt.rel || 'близких').toLowerCase() === 'жена' ? 'жену' : (pt.rel || 'близких').toLowerCase() === 'сестра' ? 'сестру' : (pt.rel || 'близких').toLowerCase());
+  // «Пригласить мужа / маму / сестру» — родственник в винительном падеже
+  const REL_ACC = { мама: 'маму', папа: 'папу', дочь: 'дочь', сын: 'сына', жена: 'жену', муж: 'мужа', сестра: 'сестру', брат: 'брата', бабушка: 'бабушку', дедушка: 'дедушку', отец: 'отца', мать: 'мать' };
+  M.talkName = (pt, k) => {
+    const rel = (pt.rel || 'близких').toLowerCase();
+    return M.TALKS[k].name.replace('{REL_LC}', REL_ACC[rel] || rel);
+  };
   M.talksFor = (pt) => Object.keys(M.TALKS).filter((k) => !M.TALKS[k].when || M.TALKS[k].when(pt));
   /** Провести беседу. Возвращает [{ lvl, text }] — что сказал пациент и как это оценил заведующий. */
   M.talk = function (s, pt, k) {
