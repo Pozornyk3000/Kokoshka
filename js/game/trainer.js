@@ -72,7 +72,7 @@
   };
 
   /* ---------- Настройки устройства ---------- */
-  const BLANK = () => ({ best: {}, wrong: [], runs: 0, answered: 0, streak: 0, bestStreak: 0, right: [], ach: {}, failed: {}, lvl: 0, timed: false });
+  const BLANK = () => ({ best: {}, wrong: [], runs: 0, answered: 0, streak: 0, bestStreak: 0, right: [], ach: {}, failed: {}, lvl: 0, timed: false, mse: {}, mseRuns: 0, mseClean: 0 });
   const store = () => Object.assign(BLANK(), (A.store && A.store.prefs ? A.store.prefs().trainer : null) || {});
   const put = (st) => A.store && A.store.setPref && A.store.setPref('trainer', st);
   T.stats = store;
@@ -218,6 +218,10 @@
     { id: 'bank', name: 'Весь банк', desc: 'Хотя бы раз верно ответить на каждый вопрос банка.' },
     { id: 'timed80', name: 'В регламенте', desc: 'Сдать полный тест на 80 вопросов на время — за 60 минут.' },
     { id: 'official', name: 'К настоящему экзамену', desc: 'Открыть официальный репетиционный экзамен.' },
+    { id: 'mse_first', name: 'Первая запись', desc: 'Собрать первый психический статус в конструкторе.' },
+    { id: 'mse_ace', name: 'Статус как в учебнике', desc: 'Собрать психический статус без единой ошибки.' },
+    { id: 'mse_clean', name: 'Без ярлыков', desc: 'Пять психических статусов подряд — ни одного «неадекватен» или «бредит».' },
+    { id: 'mse_all', name: 'Вся картотека', desc: 'Каждый пациент конструктора статуса — от 80%.' },
   ];
   T.achList = function () {
     const got = store().ach;
@@ -269,4 +273,38 @@
     give('bank', T.bank().every((x) => right.has(x.ref)));
     return got;
   }
+
+  /* ---------- Конструктор психического статуса ---------- */
+  T.mseBest = (id) => (store().mse || {})[id];
+  /** Случайный пациент уровня lvl (0 — любой): сначала те, кого ещё не описывали. */
+  T.msePick = function (lvl, exclude) {
+    const best = store().mse || {};
+    const pool = A.mse.list(lvl).filter((x) => x.id !== exclude);
+    if (!pool.length) return null;
+    const fresh = pool.filter((x) => best[x.id] == null);
+    return U.pick(fresh.length ? fresh : pool).id;
+  };
+  /** Итог прохождения в тренажёре: лучший результат по пациенту, серия без ярлыков, достижения. Возвращает новые достижения. */
+  T.mseFinish = function (mst) {
+    const res = mst.res;
+    if (!res) return [];
+    const st = store();
+    st.mse = st.mse || {};
+    st.mse[mst.id] = Math.max(st.mse[mst.id] || 0, res.pct);
+    st.mseRuns = (st.mseRuns || 0) + 1;
+    st.mseClean = res.traps ? 0 : (st.mseClean || 0) + 1;
+    const got = [];
+    const give = (id, cond) => {
+      if (cond && !st.ach[id]) {
+        st.ach[id] = Date.now();
+        got.push(id);
+      }
+    };
+    give('mse_first', true);
+    give('mse_ace', res.pct === 100);
+    give('mse_clean', st.mseClean >= 5);
+    give('mse_all', A.mse.scenarios().length > 0 && A.mse.scenarios().every((x) => (st.mse[x.id] || 0) >= A.mse.GOOD));
+    put(st);
+    return got;
+  };
 })((window.A = window.A || {}));

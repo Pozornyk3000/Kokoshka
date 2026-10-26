@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* Проверка тренажёра и уровней сложности в headless Chromium: тест «как на аккредитации», тест по теме, работа над ошибками,
-   задачи «диагноз по МКБ-10» с поиском по полному списку, кнопка «назад», вход из меню игры и смена сложности.
+   задачи «диагноз по МКБ-10» с поиском по полному списку, конструктор психического статуса (тренажёр, практикум на кафедре,
+   первичный приём в ПНД), кнопка «назад», вход из меню игры и смена сложности.
    NODE_PATH=/opt/node22/lib/node_modules node tools/trainer-check.cjs docs/index.html */
 const path = require('path');
 let pw;
@@ -201,6 +202,64 @@ const ok = (cond, msg) => {
   await click('tr-timed');
   ok(await page.evaluate(() => A.trainer.stats().timed === false), 'режим «на время» выключается');
 
+  console.log('Конструктор психического статуса');
+  const mse = () => page.evaluate(() => {
+    const c = A.ui.mse.cur();
+    return c ? { id: c.st.id, i: c.st.i, done: c.st.done, res: c.st.res, sel: c.st.secs.map((x) => x.sel.length), ach: c.st.newAch || null } : null;
+  });
+  // отметить в текущем разделе: верные формулировки и, если нужно, ловушку
+  const mark = (withTrap) => page.evaluate((withTrap) => {
+    const c = A.ui.mse.cur();
+    return A.mse.items(c.st, c.st.i).map((o, k) => (o.k === 'ok' || (withTrap && o.k === 'trap') ? k : -1)).filter((k) => k >= 0);
+  }, withTrap);
+  const nSc = await page.evaluate(() => A.mse.scenarios().length);
+  ok(nSc >= 15 && (await page.locator('[data-act="tr-mse"]').count()) === nSc + 1, 'карточка конструктора: ' + nSc + ' пациентов и «случайный пациент»');
+  await click('tr-mse', 'st_norm');
+  let m = await mse();
+  ok(m && m.id === 'st_norm' && m.i === 0 && m.sel.length === (await page.evaluate(() => A.mse.sections().length)), 'конструктор открылся: 11 разделов, первый — внешний вид');
+  ok(await has('details.mse-mat[open] .mse-m'), 'на первом разделе материал приёма раскрыт');
+  ok(await has('[data-act="mse-next"][aria-disabled="true"]'), '«Дальше» недоступно, пока ничего не отмечено');
+  const nSec = m.sel.length;
+  for (let i = 0; i < nSec; i++) {
+    for (const k of await mark(i === 2)) await click('mse-tog', k);
+    if (i === 1) {
+      ok(!(await has('details.mse-mat[open]')), 'на следующих разделах материал свёрнут');
+      ok(/Сознание ясное/.test(await page.locator('.mse-rec .record').textContent()), 'запись в карте собирается по ходу');
+      await click('mse-prev');
+      m = await mse();
+      ok(m.i === 0 && m.sel[0] > 0, '«Назад» возвращает к прошлому разделу, отметки на месте');
+      await click('mse-next');
+    }
+    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+  }
+  m = await mse();
+  ok(m.done && m.res.traps === 1 && m.res.pct < 100 && m.res.pct >= 85, 'статус с одним ярлыком: ' + m.res.pct + '%, ярлыков ' + m.res.traps);
+  ok((await has('.mse-mine mark.mse-trap')) && /Ярлык:/.test(await page.locator('.review').textContent()), 'в разборе ярлык выделен и объяснён');
+  ok(/Сознание ясное/.test(await page.locator('.record').last().textContent()) && (await has('.mse-memo')), 'образец статуса и памятка «Как писать статус»');
+  ok(m.ach && m.ach.indexOf('mse_first') >= 0, 'достижение «Первая запись»');
+  ok(await page.evaluate(() => A.trainer.stats().mse.st_norm === A.ui.view.trainer.mse.res.pct), 'лучший результат по пациенту сохранён');
+  await click('mse-again');
+  m = await mse();
+  ok(m.id === 'st_norm' && !m.done && m.sel.every((n) => n === 0), '«Ещё раз» — тот же пациент с чистого листа');
+  for (let i = 0; i < nSec; i++) {
+    for (const k of await mark(false)) await click('mse-tog', k);
+    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+  }
+  m = await mse();
+  ok(m.res.pct === 100 && m.ach.indexOf('mse_ace') >= 0, 'безошибочный статус — 100% и «Статус как в учебнике»');
+  await click('mse-other');
+  m = await mse();
+  ok(m && m.id !== 'st_norm' && !m.done, '«Другой пациент»: ' + (m && m.id));
+  await page.evaluate(() => A.ui.back());
+  ok((await mse()) === null && (await has('.tr-mse')), '«назад» из конструктора — к экрану тренажёра');
+  await click('tr-lvl', 3);
+  ok((await page.locator('.tr-mse [data-act="tr-mse"][data-arg^="st_"]').count()) === (await page.evaluate(() => A.mse.list(3).length)), 'на сложном уровне — только сложные пациенты');
+  await click('tr-mse', '');
+  m = await mse();
+  ok(m && (await page.evaluate((id) => A.mse.get(id).lvl, m.id)) === 3, 'случайный пациент выбранного уровня: ' + (m && m.id));
+  await page.evaluate(() => A.ui.back());
+  await click('tr-lvl', 0);
+
   console.log('Разделы МКБ и «назад»');
   await click('tr-start', 'dx');
   await click('icd-block', 'F3');
@@ -236,6 +295,74 @@ const ok = (cond, msg) => {
   ok(await page.evaluate(() => A.state.difficulty === 'easy'), 'сложность меняется в меню');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((k) => /save/i.test(k)) || 'x') || 'null'));
   ok(!saved || saved.difficulty === 'easy' || (saved.state && saved.state.difficulty === 'easy'), 'сложность сохранена');
+
+  console.log('Практикум «психический статус» на кафедре');
+  const stepType = () => page.evaluate(() => { const a = A.state.activity; const st = a && a.steps[a.i]; return st ? st.type : 'hub'; });
+  await click('tab', 'hub');
+  await page.evaluate(() => { const s = A.state; while (A.cal.isWeekend(s.day)) s.day++; s.slot = 2; A.ui.render(); });
+  await click('place', 'uni');
+  ok(await has('[data-act="do"][data-arg="mse_practice"]:not([aria-disabled="true"])'), 'вечером в будни на кафедре доступен практикум');
+  const xp0 = await page.evaluate(() => A.state.xp);
+  await click('do', 'mse_practice');
+  if (await has('[data-act="confirm-yes"]')) await click('confirm-yes');
+  m = await mse();
+  ok((await stepType()) === 'mse' && m && (await page.evaluate((id) => A.mse.get(id).lvl, m.id)) === 1, 'первый практикум — пациент базового уровня: ' + (m && m.id));
+  ok(await has('.mse-intro'), 'Кандинский объясняет задание');
+  for (let i = 0; i < nSec; i++) {
+    for (const k of await mark(false)) await click('mse-tog', k);
+    if (i === 4) {
+      // сохранение посреди практикума: после перезагрузки — тот же раздел с отметками
+      await page.evaluate(() => A.game.save());
+      await page.reload();
+      await page.waitForSelector('[data-act="continue"]');
+      await click('continue');
+      await page.waitForSelector('.mse-mat');
+      m = await mse();
+      ok(m && m.i === 4 && m.sel[4] > 0, 'после перезагрузки практикум продолжается с того же места');
+    }
+    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+  }
+  ok(await has('.mse-boss'), 'Кандинский комментирует запись');
+  await click('mse-close');
+  const pr = await page.evaluate(() => ({ t: A.state.activity ? 'act' : 'hub', best: A.state.flags.mseBest, day: A.state.flags.mseDay === A.state.day, xp: A.state.xp, ach: !!A.state.ach.status_writer }));
+  ok(pr.t === 'hub' && pr.day && Object.values(pr.best || {})[0] === 100 && pr.xp > xp0, 'практикум засчитан: 100%, опыт ' + xp0 + ' → ' + pr.xp);
+  ok(pr.ach, 'игровое достижение «Без единого ярлыка»');
+  ok(await page.evaluate(() => { const s = A.state; const slot = s.slot; s.slot = 2; const st = A.game.status(s, A.actions.byId.mse_practice); s.slot = slot; return st.disabled && /уже был/.test(st.reason); }), 'второй практикум в тот же день недоступен');
+
+  console.log('Психический статус на первичном приёме в ПНД');
+  await click('tab', 'menu');
+  await click('new');
+  if (await has('[data-act="confirm-yes"]')) await click('confirm-yes');
+  await click('mode-pick', 'doctor');
+  await click('cr-start');
+  for (let i = 0; i < 12 && (await stepType()) !== 'hub'; i++) {
+    if ((await stepType()) === 'jobs') await click('job-pick', 'pnd');
+    else await click('step-next');
+  }
+  await page.evaluate(() => { A.state.slot = 0; A.ui.render(); });
+  await click('place', 'work');
+  await click('do', 'work');
+  for (let i = 0; i < 6 && (await stepType()) === 'story'; i++) await click('step-next');
+  const fresh = await page.evaluate(() => { const st = A.state.activity.steps[A.state.activity.i]; return st.type === 'amb' ? st.p.fresh[0] : null; });
+  ok(!!fresh, 'на приёме есть новый пациент');
+  await click('am-open', fresh);
+  ok((await has('[data-act="am-mse"]')) && (await has('[data-act="am-mse-skip"]')), 'вместо готового статуса — «Записать статус» или «Показать готовую запись»');
+  await click('am-mse');
+  m = await mse();
+  ok(m && m.id === (await page.evaluate((u) => A.mse.forAmb(A.clinic.byUid(A.state, u).tpl).id, fresh)), 'конструктор открылся для этого пациента: ' + (m && m.id));
+  ok(await page.evaluate((u) => document.querySelector('.mse-pt .pt-name').textContent.indexOf(A.clinic.byUid(A.state, u).name) === 0, fresh), 'в конструкторе — имя пациента с приёма');
+  await page.evaluate(() => A.ui.back());
+  ok((await mse()) === null && (await has('[data-act="am-mse"]')), '«назад» из конструктора — к приёму');
+  await click('am-mse');
+  for (let i = 0; i < nSec; i++) {
+    for (const k of await mark(i === 0)) await click('mse-tog', k);
+    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+  }
+  const am = await page.evaluate((u) => { const pt = A.clinic.byUid(A.state, u); return { mse: pt.mse, rev: pt.rev.list[pt.rev.list.length - 1] }; }, fresh);
+  ok(am.mse && am.mse.pct >= 90 && am.mse.traps === 1 && /Психический статус/.test(am.rev.text), 'запись проверил заведующий: ' + am.mse.pct + '%, «' + am.rev.text + '»');
+  await click('mse-close');
+  ok(!(await has('[data-act="am-mse"]')) && /Ваша запись — \d+%/.test(await page.locator('.folder').textContent()), 'после записи на приёме — статус в карте и оценка');
+
 
   ok(!errors.length, 'ошибок в консоли нет' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close();

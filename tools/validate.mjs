@@ -432,6 +432,113 @@ if (drugs.length || (D.wardPatients || []).length) {
   for (const x of allText) if (/\{(?!P\})(?!\{)[^{}]*\}/.test(x.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, ''))) errors.push(`wardTexts: одинарные фигурные скобки (форма по полу игрока) в «${x.slice(0, 50)}»`);
 }
 
+/* ---------- Конструктор психического статуса ---------- */
+if ((D.statusScenarios || []).length) {
+  const SECS = (D.statusSections || []).map((x) => x.id);
+  const PH = D.statusPhrases || {};
+  const DEF = D.statusDefaults || {};
+  const TR = D.statusTraps || {};
+  const MAT = ['see', 'say', 'rel', 'chart'];
+  if (SECS.length < 8 || new Set(SECS).size !== SECS.length) errors.push('statusSections: меньше 8 разделов или повтор id');
+  for (const x of D.statusSections || []) if (!str(x.name) || !str(x.hint, 20)) errors.push(`statusSections.${x.id}: нет name или hint`);
+  // формы по полу пациента — только двойные скобки {{м|ж}}
+  const txt = (v, where, min) => {
+    if (!str(v, min || 1)) return errors.push(`${where}: пустой или слишком короткий текст`);
+    badChars(v.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, ''), where);
+    if (/[{}]/.test(v.replace(/\{\{[^{}|]*\|[^{}|]*\}\}/g, ''))) errors.push(`${where}: фигурные скобки вне формы {{м|ж}}: «${v.slice(0, 50)}»`);
+  };
+  for (const [id, x] of Object.entries(PH)) {
+    if (SECS.indexOf(x.s) < 0) errors.push(`statusPhrases.${id}: неизвестный раздел ${x.s}`);
+    txt(x.t, `statusPhrases.${id}`);
+  }
+  for (const sec of SECS) {
+    const traps = TR[sec] || [];
+    if (!traps.length) errors.push(`statusTraps.${sec}: нет ни одной ловушки`);
+    traps.forEach((t, i) => {
+      txt(t.t, `statusTraps.${sec}[${i}]`);
+      txt(t.why, `statusTraps.${sec}[${i}].why`, 40);
+    });
+  }
+  // разбор раздела: верные (ok) и ошибочные (no) формулировки, ссылки на общие — по id
+  const checkSpec = (spec, sec, where) => {
+    if (!spec || !Array.isArray(spec.ok) || !spec.ok.length) return errors.push(`${where}: нет верных формулировок`);
+    if (!Array.isArray(spec.no) || !spec.no.length) errors.push(`${where}: нет ни одной ошибочной формулировки`);
+    const seenT = new Set();
+    const one = (e, kind, i) => {
+      const w = `${where}.${kind}[${i}]`;
+      const o = typeof e === 'string' ? { id: e } : e || {};
+      if (o.id && !PH[o.id]) return errors.push(`${w}: нет общей формулировки «${o.id}»`);
+      if (o.id && PH[o.id].s !== sec) warns.push(`${w}: формулировка «${o.id}» из раздела ${PH[o.id].s}`);
+      const t = o.t || (o.id ? PH[o.id].t : '');
+      txt(t, w);
+      const key = String(t).replace(/\{\{([^{}|]*)\|[^{}|]*\}\}/g, '$1').toLowerCase();
+      if (seenT.has(key)) errors.push(`${w}: повтор формулировки «${t.slice(0, 50)}»`);
+      seenT.add(key);
+      if (kind === 'no') txt(o.why, w + '.why', 25);
+      else if (o.why) warns.push(`${w}: у верной формулировки пояснение не показывается`);
+    };
+    spec.ok.forEach((e, i) => one(e, 'ok', i));
+    (spec.no || []).forEach((e, i) => one(e, 'no', i));
+    if (spec.trap) {
+      txt(spec.trap.t, where + '.trap');
+      txt(spec.trap.why, where + '.trap.why', 40);
+    }
+    // ловушки раздела не должны совпадать с формулировками
+    for (const t of spec.trap ? [spec.trap] : TR[sec] || []) if (seenT.has(String(t.t).replace(/\{\{([^{}|]*)\|[^{}|]*\}\}/g, '$1').toLowerCase())) errors.push(`${where}: ловушка «${t.t}» совпадает с вариантом`);
+  };
+  for (const [sec, spec] of Object.entries(DEF)) {
+    if (SECS.indexOf(sec) < 0) errors.push(`statusDefaults.${sec}: неизвестный раздел`);
+    checkSpec(spec, sec, `statusDefaults.${sec}`);
+  }
+  const ambIds = new Map((D.ambPatients || []).map((t) => [t.id, t]));
+  const caseIds = new Map((D.cases || []).map((c) => [c.id, c]));
+  const linked = new Set();
+  for (const sc of D.statusScenarios) {
+    const w = `statusScenarios.${sc.id}`;
+    seen(sc.id, w);
+    if (!/^st_[a-z_]+$/.test(sc.id || '')) errors.push(`${w}: id должен быть вида st_…`);
+    if (!str(sc.title) || !str(sc.where)) errors.push(`${w}: нет title или where`);
+    if ([1, 2, 3].indexOf(sc.lvl) < 0) errors.push(`${w}: уровень lvl должен быть 1, 2 или 3`);
+    const pt = sc.patient || {};
+    if (!str(pt.name) || !(pt.age >= 14 && pt.age <= 100) || ['m', 'f'].indexOf(pt.sex) < 0) errors.push(`${w}: неверный patient`);
+    if (pt.emotion && EMOTIONS.indexOf(pt.emotion) < 0) errors.push(`${w}: неизвестная эмоция ${pt.emotion}`);
+    if (sc.amb) {
+      const t = ambIds.get(sc.amb);
+      if (!t) errors.push(`${w}: нет амбулаторного шаблона ${sc.amb}`);
+      else {
+        if (t.kind !== 'new') errors.push(`${w}: конструктор открывается только на первичном приёме — шаблон ${sc.amb} не новый`);
+        if (t.sex !== pt.sex) errors.push(`${w}: пол пациента не совпадает с шаблоном ${sc.amb}`);
+        if (t.rel && sc.rel && t.rel !== sc.rel) errors.push(`${w}: родственник «${sc.rel}», а в шаблоне — «${t.rel}»`);
+        if (linked.has(sc.amb)) errors.push(`${w}: к шаблону ${sc.amb} уже привязан другой сценарий`);
+        linked.add(sc.amb);
+      }
+    }
+    if (sc.case) {
+      const c = caseIds.get(sc.case);
+      if (!c) errors.push(`${w}: нет клинического случая ${sc.case}`);
+      else if (c.patient && c.patient.sex !== pt.sex) errors.push(`${w}: пол пациента не совпадает со случаем ${sc.case}`);
+    }
+    const mat = sc.material || [];
+    if (mat.length < 3) errors.push(`${w}: в материале меньше трёх записей`);
+    mat.forEach((m, i) => {
+      if (MAT.indexOf(m.k) < 0) errors.push(`${w}.material[${i}]: неизвестный вид ${m.k}`);
+      txt(m.t, `${w}.material[${i}]`, 20);
+    });
+    if (mat.some((m) => m.k === 'rel') && !str(sc.rel)) errors.push(`${w}: в материале есть слова родственника, но нет rel`);
+    for (const k of Object.keys(sc.sections || {})) if (SECS.indexOf(k) < 0) errors.push(`${w}: неизвестный раздел ${k}`);
+    for (const sec of SECS) {
+      const spec = (sc.sections || {})[sec] || DEF[sec];
+      if (!spec) errors.push(`${w}: раздел ${sec} не описан, а нормы по умолчанию для него нет`);
+      else if ((sc.sections || {})[sec]) checkSpec(spec, sec, `${w}.${sec}`);
+    }
+    txt(sc.note, `${w}.note`, 60);
+  }
+  for (const t of D.ambPatients || []) if (t.kind === 'new' && !linked.has(t.id)) warns.push(`ambPatients.${t.id}: нет сценария конструктора психического статуса — на первичном приёме его не будет`);
+  const byLvl = [1, 2, 3].map((l) => D.statusScenarios.filter((x) => x.lvl === l).length);
+  if (byLvl.some((n) => n < 3)) errors.push(`statusScenarios: на каждом уровне нужно не меньше трёх сценариев (сейчас ${byLvl.join('/')})`);
+  if (!(D.statusMemo || []).length) errors.push('statusMemo: нет памятки');
+}
+
 /* ---------- МКБ-10: каталог и варианты диагнозов в задачах ---------- */
 if ((D.icd || []).length) {
   vm.runInContext(fs.readFileSync(path.join(root, 'js/game/icd.js'), 'utf8'), ctx, { filename: 'icd.js' });
@@ -476,6 +583,7 @@ const counts = {
   'амбулаторных пациентов': (D.ambPatients || []).length,
   'вопросов банка': (D.testBank || []).length,
   'рубрик МКБ': (D.icd || []).length,
+  'сценариев статуса': (D.statusScenarios || []).length,
 };
 console.log('Загружено:', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', '));
 if ((D.testBank || []).length) console.log('Банк вопросов по темам (из них сложных):', DOMAINS.map((k) => `${k} ${byTopic[k] || 0} (${hardBy[k] || 0})`).join(', '));

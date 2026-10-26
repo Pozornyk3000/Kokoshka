@@ -2564,3 +2564,95 @@ a.btn {
 .trainer .feedback p {
   margin: 6px 0 0;
 }
+
+/* ---------- Конструктор психического статуса ---------- */
+.mse-pt {
+  margin-top: 6px;
+}
+.mse-intro {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-style: italic;
+}
+.mse-mat {
+  margin-top: 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  background: var(--paper);
+  padding: 8px 12px;
+}
+.mse-mat summary,
+.mse-memo summary {
+  cursor: pointer;
+}
+.mse-mat summary {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+.mse-mlist {
+  list-style: none;
+  margin: 10px 0 2px;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+.mse-m {
+  display: grid;
+  gap: 1px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.mse-mk {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mse-say .mse-mt,
+.mse-rel .mse-mt {
+  color: var(--pen);
+}
+.mse-hint {
+  margin: -4px 0 10px;
+}
+.mse-nav {
+  gap: 8px;
+}
+.mse-need {
+  margin: 6px 0 0;
+  text-align: center;
+}
+mark.mse-bad,
+mark.mse-trap {
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+mark.mse-bad {
+  background: color-mix(in srgb, var(--alarm) 20%, transparent);
+}
+mark.mse-trap {
+  background: color-mix(in srgb, var(--warn) 28%, transparent);
+  text-decoration: underline wavy color-mix(in srgb, var(--warn) 80%, transparent);
+  text-underline-offset: 3px;
+}
+.mse-boss p {
+  margin: 0;
+}
+.mse-memo {
+  margin-top: 16px;
+}
+.mse-memo[open] summary {
+  margin-bottom: 8px;
+}
+.mse-memo ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+}

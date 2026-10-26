@@ -182,6 +182,35 @@ const cdp = flag('--cdp', null) || androidPkg;
       if (!(await click(`[data-act="do"][data-arg="${choice.id}"]`))) errors.push('cannot click action ' + choice.id + ' in ' + choice.place);
       continue;
     }
+    // Конструктор психического статуса (практикум на кафедре, первичный приём): «умный» режим отмечает верные формулировки
+    const ms = await page.evaluate((smart) => {
+      const A = window.A;
+      const c = A.ui.mse && A.ui.mse.cur();
+      if (!c) return null;
+      const cl = (sel) => {
+        const b = Array.from(document.querySelectorAll(sel)).find((x) => x.getAttribute('aria-disabled') !== 'true');
+        if (b) {
+          b.click();
+          return true;
+        }
+        return false;
+      };
+      if (c.st.done) return cl('[data-act="mse-close"]') ? 'mse-close' : null;
+      if (!smart && Math.random() < 0.03 && cl('[data-act="mse-quit"]')) return 'mse-quit';
+      if (!c.st.secs[c.st.i].sel.length) {
+        const items = A.mse.items(c.st, c.st.i);
+        let ks = items.map((o, k) => k).filter((k) => Math.random() < (smart ? (items[k].k === 'ok' ? 0.9 : 0.1) : 0.45));
+        if (!ks.length) ks = [Math.floor(Math.random() * items.length)];
+        ks.forEach((k) => cl('[data-act="mse-tog"][data-arg="' + k + '"]'));
+        return 'mse-tog';
+      }
+      if (c.st.i > 0 && Math.random() < 0.04 && cl('[data-act="mse-prev"]')) return 'mse-prev';
+      return cl('[data-act="mse-next"]') || cl('[data-act="mse-done"]') ? 'mse-next' : null;
+    }, argv.includes('--smart'));
+    if (ms) {
+      seenTypes['mse:' + ms] = (seenTypes['mse:' + ms] || 0) + 1;
+      continue;
+    }
     // Отделение: обойти пациентов, решить срочное, назначить лечение, выписать готовых
     if (info.type === 'ward') {
       const smart = argv.includes('--smart');
@@ -337,6 +366,11 @@ const cdp = flag('--cdp', null) || androidPkg;
           if (!live) {
             window.__am.skip[pt.uid] = 1;
             return cl('[data-act="am-back"]') ? 'am-back' : null;
+          }
+          // психический статус на первичном приёме: записать самому или открыть готовую запись
+          if (!did.mse && document.querySelector('[data-act="am-mse"]')) {
+            did.mse = 1;
+            return cl(Math.random() < 0.6 ? '[data-act="am-mse"]' : '[data-act="am-mse-skip"]') ? 'am-mse' : null;
           }
           if (document.querySelector('[data-act="am-dx-key"]')) {
             // сложная игра: диагноз из полного списка МКБ-10

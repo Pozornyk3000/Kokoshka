@@ -93,6 +93,7 @@
     const p = step.p;
     if (p.summary) return summaryView(s, p, M.byUid(s, p.summary));
     const pt = p.open ? M.byUid(s, p.open) : null;
+    if (pt && !pt.done && p.mse && p.mse.uid === pt.uid) return UI.mse.view();
     if (pt && !pt.done) return visitView(s, p, pt);
     return listView(s, p);
   };
@@ -225,6 +226,21 @@
 
   const sec = (h, body) => (body ? '<h3 class="step-h">' + h + '</h3>' + body : '');
 
+  /** Статус на первичном приёме: для пациентов из конструктора — сначала записать его самому (или открыть готовую запись). */
+  function statusSec(s, pt, t, v) {
+    const sc = A.mse && A.mse.forAmb(t.id);
+    const live = v && v.kind === 'first' && visitToday(s, pt) === v;
+    if (!sc || !live || pt.mse || pt.flags.mseSkip) {
+      const mine = pt.mse ? '<p class="small dim">Ваша запись — ' + pt.mse.pct + '%: ' + (pt.mse.pct >= A.mse.GOOD ? 'заведующий подписал.' : 'заведующий поправил запись.') + '</p>' : '';
+      return sec('Психический статус', mdFill(pt, t.status) + mine);
+    }
+    return sec(
+      'Психический статус',
+      '<p class="small">Запишите статус сами: что видно на приёме, что говорят пациент и родственники — по разделам, от внешнего вида до критики. Заведующий проверит запись.</p>' +
+        '<div class="row-btns">' + btn('Записать статус', 'am-mse', null, 'primary') + btn('Показать готовую запись', 'am-mse-skip', null, 'ghost') + '</div>',
+    );
+  }
+
   function visitTab(s, p, pt, v) {
     const t = M.tpl(pt);
     let out = '';
@@ -236,7 +252,7 @@
         out += sec('Жалобы', mdFill(pt, t.complaints));
         out += sec('Анамнез', mdFill(pt, t.history));
         out += sec('Соматически', mdFill(pt, t.somatic));
-        out += sec('Психический статус', mdFill(pt, t.status));
+        out += statusSec(s, pt, t, v);
       } else {
         out += sec('Участок', '<p>' + fill(pt, t.referral) + '</p>');
         out += sec('Жалобы', mdFill(pt, t.complaints));
@@ -514,6 +530,21 @@
     UI.view.amDxKey = null;
     if (UI.icd) UI.icd.reset();
     if (r) H.fb(p, pt, 'Предварительный диагноз', [{ lvl: r.ok === true ? 'ok' : r.ok === 'part' ? 'warn' : 'err', text: (r.ok === true ? '' : 'Верный диагноз: ' + r.right + '. ') + r.why }]);
+    save();
+  });
+  UI.on('am-mse', () => {
+    const { s, p, pt } = cur();
+    const v = pt && visitToday(s, pt);
+    const sc = v && v.kind === 'first' && A.mse.forAmb(M.tpl(pt).id);
+    if (!sc || pt.mse || pt.flags.mseSkip || p.mse) return;
+    p.mse = { uid: pt.uid, st: A.mse.init(sc.id, { seed: pt.seed, sex: pt.sex }) };
+    G.save();
+    UI.render({ scroll: 'top' });
+  });
+  UI.on('am-mse-skip', () => {
+    const { pt } = cur();
+    if (!pt) return;
+    pt.flags.mseSkip = true;
     save();
   });
   UI.on('am-talk', (k) => {

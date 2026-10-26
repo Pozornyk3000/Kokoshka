@@ -373,8 +373,9 @@
       return true;
     }
     if (v.screen === 'trainer') {
-      if (v.trainer && v.trainer.run) {
+      if (v.trainer && (v.trainer.run || v.trainer.mse)) {
         v.trainer.run = null;
+        v.trainer.mse = null;
         UI.render({ scroll: 'top' });
       } else UI.handlers['tr-exit']();
       return true;
@@ -389,8 +390,9 @@
       // в отделении «назад» закрывает лист назначения и возвращает из истории болезни к списку
       const step = s.activity.steps[s.activity.i];
       const ap = step && step.type === 'amb' ? step.p : null;
-      if (ap && (ap.sheet || ap.summary || ap.open)) {
-        if (ap.sheet) ap.sheet = null;
+      if (ap && (ap.mse || ap.sheet || ap.summary || ap.open)) {
+        if (ap.mse) ap.mse = null;
+        else if (ap.sheet) ap.sheet = null;
         else if (ap.summary) {
           ap.summary = null;
           A.clinic.archiveDone(s);

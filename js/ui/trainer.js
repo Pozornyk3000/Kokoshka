@@ -1,5 +1,6 @@
 /* Экран тренажёра: официальный репетиционный экзамен (ссылка), тесты игры по уровням сложности, вопрос за вопросом,
-   разбор ошибок и достижения тренажёра. Открывается с титула и из меню игры. */
+   разбор ошибок, конструктор психического статуса (экран — js/ui/mse.js) и достижения тренажёра.
+   Открывается с титула и из меню игры. */
 (function (A) {
   'use strict';
   const U = A.util;
@@ -10,7 +11,7 @@
   const btn = (label, act, arg, cls, dis) =>
     '<button type="button" class="btn ' + (cls || '') + '" data-act="' + act + '"' + (arg != null ? ' data-arg="' + esc(arg) + '"' : '') + (dis ? ' aria-disabled="true"' : '') + '>' + label + '</button>';
 
-  const tv = () => (UI.view.trainer = UI.view.trainer || { run: null, topic: null, lvl: T.stats().lvl || 0 });
+  const tv = () => (UI.view.trainer = UI.view.trainer || { run: null, mse: null, topic: null, lvl: T.stats().lvl || 0 });
   // внешняя ссылка: в браузере — новая вкладка, в приложении Android — системный браузер
   const ext = (label, url, cls, extra) => '<a class="btn ' + (cls || '') + '" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer"' + (extra || '') + '>' + label + ' ↗</a>';
   const LVL_DESC = {
@@ -28,7 +29,8 @@
   UI.screens.trainer = function () {
     const v = tv();
     let body;
-    if (v.run && v.run.done) body = resultView(v.run);
+    if (v.mse) body = UI.mse.view();
+    else if (v.run && v.run.done) body = resultView(v.run);
     else if (v.run) body = questionView(v.run);
     else body = homeView();
     setTimeout(ensureTick, 0);
@@ -49,7 +51,7 @@
     const nDx = T.dxPool().length;
     let out =
       '<header class="create-head"><span class="eyebrow">Анамнез</span><h1 class="display">Тренажёр</h1>' +
-      '<p class="dim">Тесты и ситуационные задачи по психиатрии — ' + qWord(total) + ' и ' + nDx + ' ' + U.plural(nDx, ['задача', 'задачи', 'задач']) + ' на диагноз. На игру не влияет: это подготовка к экзаменам — и к работе.</p></header>';
+      '<p class="dim">Тесты и ситуационные задачи по психиатрии — ' + qWord(total) + ' и ' + nDx + ' ' + U.plural(nDx, ['задача', 'задачи', 'задач']) + ' на диагноз, а ещё конструктор психического статуса. На игру не влияет: это подготовка к экзаменам — и к работе.</p></header>';
     out +=
       '<section class="card official"><h2 class="h2">Официальный репетиционный экзамен</h2>' +
       '<p class="small">Настоящие тестовые задания первичной специализированной аккредитации — из единой базы Методического центра аккредитации специалистов. В репетиционном экзамене их можно проходить сколько угодно раз.</p>' +
@@ -91,12 +93,34 @@
       '<section class="card"><h2 class="h2">Диагноз по МКБ-10</h2><p class="small">До 8 ситуационных задач. Диагноз — самостоятельно, из полного списка МКБ-10 с поиском, как в сложной игре. Верная рубрика с другим уточнением — полбалла.' +
       (lvl ? ' Уровень задачи — сложность клинического случая; на этом уровне задач: ' + nDxL + '.' : '') + '</p>' +
       '<div class="act-chips">' + best('dx', null, lvl) + '</div><div class="row-btns">' + btn('Начать', 'tr-start', 'dx', 'primary', !nDxL) + '</div></section>';
+    out += mseCard(lvl);
     out +=
       '<section class="card"><h2 class="h2">Работа над ошибками</h2><p class="small">' + (wrong ? 'Вопросы всех уровней, на которые вы ответили неверно: ' + wrong + '. Правильный ответ убирает вопрос из списка.' : 'Здесь соберутся вопросы, на которые вы ответили неверно.') + '</p>' +
       '<div class="row-btns">' + btn('Повторить', 'tr-start', 'mistakes', '', !wrong) + '</div></section>';
     out += achCard();
     out += '<div class="create-btns">' + btn('Назад', 'tr-exit', null, 'ghost') + '</div>';
     return out;
+  }
+
+  // конструктор психического статуса: пациенты выбранного уровня, лучший результат по каждому
+  function mseCard(lvl) {
+    const list = A.mse.list(lvl);
+    const all = A.mse.scenarios();
+    const st = T.stats().mse || {};
+    const good = all.filter((x) => (st[x.id] || 0) >= A.mse.GOOD).length;
+    return (
+      '<section class="card tr-mse"><h2 class="h2">Психический статус</h2>' +
+      '<p class="small">Конструктор записи: по наблюдению, словам пациента и родственников соберите статус по разделам — от внешнего вида до критики. Среди формулировок есть ошибки по содержанию и ярлыки вроде «неадекватен». В конце — разбор и образец.</p>' +
+      '<div class="act-chips">' + UI.chip('описано от 80%: ' + good + ' из ' + all.length, good === all.length ? 'pos' : '') + '</div>' +
+      '<div class="chipbar">' +
+      list
+        .map((x) => {
+          const b = st[x.id];
+          return '<button type="button" class="chipbtn" data-act="tr-mse" data-arg="' + x.id + '">' + esc(x.title) + (b != null ? ' · ' + b + '%' : '') + '</button>';
+        })
+        .join('') +
+      '</div><div class="row-btns">' + btn('Случайный пациент', 'tr-mse', '', 'primary', !list.length) + '</div></section>'
+    );
   }
 
   function achItems(list) {
@@ -219,6 +243,14 @@
     tv().topic = tv().topic === k ? null : k;
     UI.render();
   });
+  UI.on('tr-mse', (id) => {
+    const v = tv();
+    const sid = id && A.mse.get(id) ? id : T.msePick(v.lvl || 0);
+    if (!sid) return;
+    v.run = null;
+    v.mse = A.mse.init(sid);
+    UI.render({ scroll: 'top' });
+  });
   UI.on('tr-timed', () => {
     T.setTimed(!T.stats().timed);
     UI.render();
@@ -274,6 +306,7 @@
   });
   UI.on('tr-home', () => {
     tv().run = null;
+    tv().mse = null;
     UI.render({ scroll: 'top' });
   });
   // таймер теста на время: раз в секунду обновляем табло, по истечении — завершаем прогон

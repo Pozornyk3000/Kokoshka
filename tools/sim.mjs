@@ -282,6 +282,13 @@ function resolveStep() {
       }
       return G.stepDone({ kind: 'mini', right, total: n });
     }
+    case 'mse': {
+      // практикум «психический статус»: верные формулировки отмечаются с вероятностью skill, ошибочные — изредка
+      const mst = A.mse.init(st.id, { seed: Math.floor(Math.random() * 1e9) });
+      mst.secs.forEach((sec, si) => A.mse.items(mst, si).forEach((o, k) => (o.k === 'ok' ? chance(skill) : chance((1 - skill) * 0.3)) && sec.sel.push(k)));
+      const r = A.mse.finish(mst);
+      return G.stepDone({ kind: 'mse', id: st.id, pct: r.pct, traps: r.traps });
+    }
     case 'jobs': {
       const job = D.jobs[jobPref] && !D.jobs[jobPref].req(s) ? jobPref : 'pnd';
       G.startCareer(s, job);
@@ -348,6 +355,7 @@ function choose() {
     if (dream === 'science' && can('article') && chance(0.5)) return 'article';
   } else {
     if (G.inDebt(s) && can('otrabotka')) return 'otrabotka';
+    if (can('mse_practice') && chance(0.35)) return 'mse_practice';
     for (const id of ['gig_courier', 'gig_tutor', 'gig_callcenter']) if (can(id) && chance(0.45)) return id;
   }
   if (can('study') && chance(0.5)) return 'study';
@@ -384,6 +392,10 @@ const pr = (s.ward && s.ward.practice) || {};
 const wd = (s.ward && s.ward.done) || [];
 console.log(`Отделение: обходов ${wardStats.rounds}, назначений ${wardStats.rx}, грубых ошибок ${wardStats.errs}; практика — обходов ${pr.rounds || 0}/${pr.days || 0}, ср. ${pr.avg || 0}, зачёт ${pr.grade}; выписано ${wd.filter((x) => x.how === 'discharge').length} (ср. ${wd.length ? Math.round(wd.reduce((a, x) => a + x.score, 0) / wd.length) : 0}), диплом ${s.study.diploma ? s.study.diploma.number : '—'}, аккредитация ${s.study.accr ? 'да' : 'нет'}`);
 console.log(`Итог: день ${s.day}, фаза ${s.phase}, деньги ${Math.round(s.money)}, реп ${Math.round(s.rep)}, ранг «${G.rank(s).name}», случаев ${s.stats.cases}, верных дз ${s.stats.dxRight}, ночей ${s.stats.nights}, выгораний ${s.burnout.episodes}, экзамены ${JSON.stringify(Object.fromEntries(Object.entries(s.study.exams).map(([k, v]) => [k, v.grade])))}, достижений ${Object.keys(s.ach).length}, сохранение ${(JSON.stringify(s).length / 1024).toFixed(0)} КБ`);
+{
+  const mb = Object.values(s.flags.mseBest || {});
+  console.log(`Практикум «психический статус»: ${s.flags.mseN || 0}, пациентов ${mb.length}, средний лучший ${mb.length ? Math.round(mb.reduce((a, b) => a + b, 0) / mb.length) : 0}%`);
+}
 if (guard >= 20000) console.log('ВНИМАНИЕ: превышен лимит шагов (зацикливание?)');
 if (argv.includes('--ward')) {
   const P = A.pharma;

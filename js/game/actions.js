@@ -394,6 +394,34 @@
     },
   });
   def({
+    id: 'mse_practice',
+    place: 'uni',
+    title: 'Практикум: психический статус',
+    sub: 'Доц. Кандинский разбирает записи ординаторов — без «неадекватен» и «бредит»',
+    slots: [1, 2],
+    days: 'weekday',
+    phases: ['study', 'session'],
+    energy: -10,
+    chips: [{ t: '−10 энергии', c: 'neg' }, { t: '+психопатология', c: 'pos' }],
+    req: (s) => (s.flags.mseDay === s.day ? 'Сегодня практикум уже был' : null),
+    run: (s) => {
+      const id = A.mse.pick(s);
+      return id ? { steps: [{ type: 'mse', id }] } : { text: 'Сегодня практикума нет: Кандинский на консилиуме.' };
+    },
+    finish: (s, res) => {
+      const r = res[0] || {};
+      const pct = r.pct || 0;
+      s.flags.mseDay = s.day;
+      if (r.id) A.mse.record(s, r.id, pct);
+      G.apply(s, { energy: -10, stress: pct >= A.mse.PASS ? 0 : 3, xp: 3 + Math.round(pct / 20) });
+      G.learn(s, 'psychopath', (2 + (3 * pct) / 100) * G.focus(s));
+      if (pct === 100) G.unlock(s, 'status_writer');
+      if (pct >= 90) return 'Кандинский ставит на полях карты маленькую галочку — высшая похвала. «Так и пишите в отделении: сначала факты, потом термины». Статус: ' + pct + '%.';
+      if (pct >= A.mse.PASS) return 'Кандинский подчёркивает пару строк красной ручкой. «Почти. Пропущенное в статусе — пропущенное в лечении». Статус: ' + pct + '%.';
+      return 'Кандинский возвращает карту, исчерканную вдоль и поперёк. «Статус — это описание, а не впечатление. Завтра — ещё одного пациента». Статус: ' + pct + '%.';
+    },
+  });
+  def({
     id: 'consult',
     place: 'uni',
     title: 'Консультация перед экзаменом',

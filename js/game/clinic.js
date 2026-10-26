@@ -925,6 +925,21 @@
     return { ok: pt.dxOk, why: pt.dxWhy, right: pt.dx };
   };
 
+  /** Психический статус, записанный в конструкторе на первичном приёме: проверка заведующего и опыт. res — итог A.mse.finish. */
+  M.mseDone = function (s, pt, res) {
+    if (!res || pt.mse) return null;
+    const sc = A.mse.forAmb(pt.tpl);
+    const good = res.pct >= A.mse.GOOD;
+    pt.mse = { pct: res.pct, traps: res.traps, day: s.day };
+    if (good) pt.rev.ok++;
+    pt.rev.list.push({ day: s.day, lvl: good ? 'ok' : 'warn', text: 'Психический статус ' + (good ? 'записан точно' : 'с ошибками — запись поправил заведующий') + ' (' + res.pct + '%' + (res.traps ? ', ярлыков: ' + res.traps : '') + ').' });
+    if (sc) A.mse.record(s, sc.id, res.pct);
+    G().apply(s, { xp: 2 + Math.round(res.pct / 25) });
+    G().learn(s, 'psychopath', res.pct >= A.mse.PASS ? 0.6 : 0.3);
+    if (res.pct === 100) G().unlock(s, 'status_writer');
+    return pt.mse;
+  };
+
   /* ---------- Беседа на приёме ---------- */
   M.TALKS = {
     explain: { name: 'Объяснить, как действует лечение и чего ждать', short: 'Объяснить лечение' },
