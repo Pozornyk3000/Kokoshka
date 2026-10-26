@@ -183,6 +183,24 @@ const ok = (cond, msg) => {
   ok(em1 >= (await page.evaluate(() => A.trainer.MIN_TOPIC)), 'на базовом уровне тест по каждой теме доступен (неотложка — ' + em1 + ')');
   await click('tr-lvl', 0);
 
+  console.log('Тест на время');
+  await click('tr-timed');
+  ok(await page.evaluate(() => A.trainer.stats().timed === true), 'режим «на время» включается и сохраняется');
+  await click('tr-start', 'accr20');
+  ok(await page.evaluate(() => { const r = A.ui.view.trainer.run; return r.limit === 20 * A.trainer.SEC_PER_Q * 1000; }), 'на 20 вопросов — 15 минут');
+  ok(/^1[45]:\d\d$/.test(await page.locator('#tr-timer').textContent()), 'на экране идёт обратный отсчёт: ' + (await page.locator('#tr-timer').textContent()));
+  await click('tr-pick', await okIndex());
+  await click('tr-next');
+  // «перематываем» время: срок истёк — прогон завершается сам
+  await page.evaluate(() => (A.ui.view.trainer.run.deadline = Date.now() - 10));
+  await page.waitForFunction(() => A.ui.view.trainer.run && A.ui.view.trainer.run.done, null, { timeout: 5000 });
+  r = await run();
+  ok(r.done && r.pct === 5, 'время вышло: неотвеченные вопросы засчитаны как неверные (' + r.pct + '%)');
+  ok(await page.evaluate(() => /Время вышло/.test(document.querySelector('.result-card').textContent)), 'в итогах сказано, что время вышло');
+  await click('tr-home');
+  await click('tr-timed');
+  ok(await page.evaluate(() => A.trainer.stats().timed === false), 'режим «на время» выключается');
+
   console.log('Разделы МКБ и «назад»');
   await click('tr-start', 'dx');
   await click('icd-block', 'F3');

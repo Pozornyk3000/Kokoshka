@@ -20,6 +20,10 @@
     3: 'Развёрнутые случаи в стиле зарубежных экзаменов для ординаторов: дифференциальная диагностика, взаимодействия препаратов, редкие, но опасные состояния.',
   };
   const qWord = (n) => n + ' ' + U.plural(n, ['вопрос', 'вопроса', 'вопросов']);
+  const mmss = (ms) => {
+    const t = Math.ceil(ms / 1000);
+    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  };
 
   UI.screens.trainer = function () {
     const v = tv();
@@ -27,6 +31,7 @@
     if (v.run && v.run.done) body = resultView(v.run);
     else if (v.run) body = questionView(v.run);
     else body = homeView();
+    setTimeout(ensureTick, 0);
     return '<main class="wrap trainer">' + body + '</main>';
   };
 
@@ -63,6 +68,8 @@
       '<section class="card"><h2 class="h2">Тест в формате аккредитации</h2><p class="small">Вопросы из всех тем поровну, без подсказок по ходу — разбор в конце. На настоящей аккредитации — 80 вопросов за 60 минут.</p>' +
       (lvl && nLvl < 80 ? '<p class="small dim">На этом уровне в банке ' + qWord(nLvl) + ' — полный тест будет короче.</p>' : '') +
       '<div class="act-chips">' + best('accr20', null, lvl) + best('accr80', null, lvl) + '</div>' +
+      '<div class="chipbar tr-timed"><button type="button" class="chipbtn" data-act="tr-timed" aria-pressed="' + !!T.stats().timed + '">На время: ' + T.SEC_PER_Q + ' секунд на вопрос</button></div>' +
+      (T.stats().timed ? '<p class="small dim">20 вопросов — 15 минут, 80 вопросов — 60 минут, как на настоящем тестировании. Когда время выйдет, неотвеченные вопросы засчитаются как неверные.</p>' : '') +
       '<div class="row-btns">' + btn('20 вопросов', 'tr-start', 'accr20', 'primary') + btn('80 вопросов', 'tr-start', 'accr80', '') + '</div></section>';
     out += '<section class="card"><h2 class="h2">Тест по теме</h2><p class="small">До 10 вопросов, после каждого ответа — объяснение.</p><div class="chipbar">';
     D.domainKeys.forEach((k) => {
@@ -114,7 +121,9 @@
     const qLvl = run.kind === 'dx' ? (T.dxTask(ref) || {}).difficulty || 2 : T.refLevel(ref);
     let out =
       '<header class="act-head"><span class="eyebrow">' + esc(run.kind === 'topic' ? D.domains[run.topic].name : K.name) + (run.lvl ? ' · ' + esc(T.LEVELS[run.lvl].short) + ' уровень' : '') + '</span>' +
-      '<div class="tr-progress"><span class="mono small">' + (run.kind === 'dx' ? 'Задача ' : 'Вопрос ') + (run.i + 1) + ' из ' + n + ' ' + lvlChip(qLvl) + '</span><div class="mini-track"><div style="width:' + Math.round((run.i / n) * 100) + '%"></div></div></div></header>';
+      '<div class="tr-progress"><span class="mono small">' + (run.kind === 'dx' ? 'Задача ' : 'Вопрос ') + (run.i + 1) + ' из ' + n + ' ' + lvlChip(qLvl) +
+      (run.deadline ? ' <span class="chip tr-timer' + (T.left(run) < 5 * 60000 ? ' low' : '') + '" id="tr-timer" aria-label="Осталось времени">' + mmss(T.left(run)) + '</span>' : '') +
+      '</span><div class="mini-track"><div style="width:' + Math.round((run.i / n) * 100) + '%"></div></div></div></header>';
     if (run.kind === 'dx') {
       const c = T.dxTask(ref);
       out += '<article class="vignette"><span class="eyebrow">Ситуационная задача</span>' + U.md(c.vignette) + '</article>';
@@ -162,6 +171,7 @@
     let out =
       '<section class="result-card"><div class="stamp' + (run.pass ? '' : ' bad') + '"><b>' + run.pct + '%</b><span>' + (K.exam ? (run.pass ? 'сдано' : 'не сдано') : run.pass ? 'хорошо' : 'надо повторить') + '</span></div>' +
       '<p class="mono small">' + esc(run.kind === 'topic' ? D.domains[run.topic].name : K.name) + (run.lvl ? ' · ' + esc(T.LEVELS[run.lvl].short) + ' уровень' : '') + ' · верно ' + String(run.right).replace('.', ',') + ' из ' + run.refs.length + '</p>' +
+      (run.deadline ? '<p class="small">' + (run.timedOut ? 'Время вышло — неотвеченные вопросы засчитаны как неверные.' : 'Время: ' + mmss(run.spent || 0) + ' из ' + mmss(run.limit) + '.') + '</p>' : '') +
       (K.exam ? '<p class="small dim">Это тренировочный тест игры, а не официальная аккредитация. Настоящие задания — в репетиционном экзамене центра аккредитации.</p>' : '') +
       '</section>';
     if (run.newAch && run.newAch.length) {
@@ -209,9 +219,13 @@
     tv().topic = tv().topic === k ? null : k;
     UI.render();
   });
+  UI.on('tr-timed', () => {
+    T.setTimed(!T.stats().timed);
+    UI.render();
+  });
   UI.on('tr-start', (kind) => {
     const v = tv();
-    const run = T.start(kind, kind === 'topic' ? v.topic : null, v.lvl || 0);
+    const run = T.start(kind, kind === 'topic' ? v.topic : null, v.lvl || 0, { timed: T.stats().timed });
     if (!run) return UI.toast('Вопросов для этого теста на выбранном уровне пока мало.');
     v.run = run;
     UI.view.trDx = null;
@@ -262,6 +276,40 @@
     tv().run = null;
     UI.render({ scroll: 'top' });
   });
+  // таймер теста на время: раз в секунду обновляем табло, по истечении — завершаем прогон
+  let tick = null;
+  function ensureTick() {
+    const run = UI.view.screen === 'trainer' && UI.view.trainer ? UI.view.trainer.run : null;
+    const active = run && run.deadline && !run.done;
+    if (!active) {
+      if (tick) clearInterval(tick);
+      tick = null;
+      return;
+    }
+    if (tick) return;
+    tick = setInterval(() => {
+      const r = UI.view.screen === 'trainer' && UI.view.trainer ? UI.view.trainer.run : null;
+      if (!r || !r.deadline || r.done) {
+        clearInterval(tick);
+        tick = null;
+        return;
+      }
+      if (T.timeUp(r)) {
+        clearInterval(tick);
+        tick = null;
+        UI.view.trDx = null;
+        UI.render({ scroll: 'top' });
+        UI.toast('Время вышло.' + (r.newAch && r.newAch.length ? ' Новое достижение: ' + r.newAch.map(T.achName).join(', ') + '.' : ''));
+        return;
+      }
+      const el = document.getElementById('tr-timer');
+      if (el) {
+        const left = T.left(r);
+        el.textContent = mmss(left);
+        el.classList.toggle('low', left < 5 * 60000);
+      }
+    }, 1000);
+  }
   // раскрыта ли карточка достижений — запоминаем до конца сеанса
   document.addEventListener('toggle', (e) => e.target && e.target.classList && e.target.classList.contains('tr-achs') && (UI.view.trAchOpen = e.target.open), true);
   // переход на официальный репетиционный экзамен — тоже достижение (ссылка открывается как обычно)

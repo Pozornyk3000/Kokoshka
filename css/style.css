@@ -2534,6 +2534,17 @@ a.btn {
 .trainer .tr-achs[open] summary {
   margin-bottom: 8px;
 }
+.chip.tr-timer {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.chip.tr-timer.low {
+  color: var(--alarm);
+  border-color: currentColor;
+}
+.trainer .tr-timed {
+  margin: 8px 0 0;
+}
 .trainer .tr-ach-new {
   border-color: var(--stamp);
   box-shadow: inset 3px 0 0 var(--stamp);

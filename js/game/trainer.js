@@ -12,6 +12,7 @@
 
   T.PASS = 70;
   T.MIN_TOPIC = 4; // меньше вопросов на выбранном уровне — тест по теме недоступен
+  T.SEC_PER_Q = 45; // режим «на время»: как на настоящем тестировании — 80 вопросов за 60 минут
   /** Официальный репетиционный экзамен Методического центра аккредитации специалистов (открывается в браузере). */
   T.OFFICIAL = { exam: 'https://selftest.mededtech.ru/', site: 'https://fmza.ru/' };
   T.KINDS = {
@@ -71,21 +72,27 @@
   };
 
   /* ---------- Настройки устройства ---------- */
-  const BLANK = () => ({ best: {}, wrong: [], runs: 0, answered: 0, streak: 0, bestStreak: 0, right: [], ach: {}, failed: {}, lvl: 0 });
+  const BLANK = () => ({ best: {}, wrong: [], runs: 0, answered: 0, streak: 0, bestStreak: 0, right: [], ach: {}, failed: {}, lvl: 0, timed: false });
   const store = () => Object.assign(BLANK(), (A.store && A.store.prefs ? A.store.prefs().trainer : null) || {});
   const put = (st) => A.store && A.store.setPref && A.store.setPref('trainer', st);
   T.stats = store;
   T.wrongRefs = () => store().wrong.filter((r) => T.question(r));
   T.bestKey = (kind, topic, lvl) => (kind === 'topic' ? 'topic_' + topic : kind) + (lvl ? '_l' + lvl : '');
   T.best = (kind, topic, lvl) => store().best[T.bestKey(kind, topic, lvl)];
+  T.setTimed = function (on) {
+    const st = store();
+    st.timed = !!on;
+    put(st);
+  };
   T.setLevel = function (lvl) {
     const st = store();
     st.lvl = T.LEVELS[lvl] ? +lvl : 0;
     put(st);
   };
 
-  /** Новый прогон. kind — ключ T.KINDS; topic — для теста по теме; lvl — уровень (0 — все). */
-  T.start = function (kind, topic, lvl) {
+  /** Новый прогон. kind — ключ T.KINDS; topic — для теста по теме; lvl — уровень (0 — все); opt.timed — на время (только тесты в формате аккредитации). */
+  T.start = function (kind, topic, lvl, opt) {
+    opt = opt || {};
     const K = T.KINDS[kind];
     if (!K) return null;
     lvl = T.LEVELS[lvl] ? +lvl : 0;
@@ -113,7 +120,21 @@
       const q = T.question(r);
       return U.shuffle(q.opts.map((o, i) => i));
     });
-    return { kind, topic: topic || null, lvl, refs, order, i: 0, ans: [], shown: false, done: false };
+    const run = { kind, topic: topic || null, lvl, refs, order, i: 0, ans: [], shown: false, done: false };
+    if (opt.timed && K.exam) {
+      run.limit = refs.length * T.SEC_PER_Q * 1000;
+      run.deadline = Date.now() + run.limit;
+    }
+    return run;
+  };
+  /** Сколько миллисекунд осталось в прогоне на время (null — без ограничения). */
+  T.left = (run) => (run && run.deadline ? Math.max(0, run.deadline - Date.now()) : null);
+  /** Время вышло: прогон завершается, неотвеченные вопросы считаются неверными. */
+  T.timeUp = function (run) {
+    if (!run || run.done || !run.deadline || T.left(run) > 0) return false;
+    run.timedOut = true;
+    T.finish(run);
+    return true;
   };
 
   /** Ответ на текущий вопрос: для тестов — индекс варианта, для задач — ключ МКБ-10. */
@@ -152,6 +173,7 @@
   };
   T.finish = function (run) {
     run.done = true;
+    if (run.deadline) run.spent = Math.min(run.limit, Date.now() - (run.deadline - run.limit));
     let sum = 0;
     run.refs.forEach((r, i) => (sum += run.ans[i] != null ? T.check(run, i).score : 0));
     run.right = Math.round(sum * 10) / 10;
@@ -194,6 +216,7 @@
     { id: 'dx_ace', name: 'Диагност', desc: 'Все задачи на диагноз по МКБ-10 в прогоне — без единой ошибки.' },
     { id: 'q300', name: 'Триста вопросов', desc: 'Ответить в тренажёре на 300 вопросов.' },
     { id: 'bank', name: 'Весь банк', desc: 'Хотя бы раз верно ответить на каждый вопрос банка.' },
+    { id: 'timed80', name: 'В регламенте', desc: 'Сдать полный тест на 80 вопросов на время — за 60 минут.' },
     { id: 'official', name: 'К настоящему экзамену', desc: 'Открыть официальный репетиционный экзамен.' },
   ];
   T.achList = function () {
@@ -226,6 +249,7 @@
     give('pass20', run.kind === 'accr20' && run.pass);
     give('pass80', run.kind === 'accr80' && run.pass);
     give('ace80', run.kind === 'accr80' && run.pct >= 90);
+    give('timed80', run.kind === 'accr80' && !!run.deadline && run.pass);
     give('hard_pass', accr && run.lvl === 3 && run.pass);
     give('hard_ace', run.lvl === 3 && run.kind !== 'dx' && run.refs.length >= 10 && run.pct === 100);
     give('topic_ace', run.kind === 'topic' && run.pct === 100);
