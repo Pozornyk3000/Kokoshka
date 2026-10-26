@@ -351,8 +351,30 @@ const ok = (cond, msg) => {
   ok(await has('.trainer'), 'тренажёр открылся из меню');
   await click('tr-exit');
   ok(await page.evaluate(() => A.ui.view.tab === 'menu' && !A.ui.view.screen), 'выход из тренажёра — обратно в меню');
+  ok(await page.evaluate(() => document.querySelector('.menu .card').classList.contains('menu-diff')), 'в меню сложность — первым пунктом');
   await click('set-diff', 'easy');
   ok(await page.evaluate(() => A.state.difficulty === 'easy'), 'сложность меняется в меню');
+  await click('settings');
+  ok((await has('.settings-sheet')) && (await page.locator('.settings-sheet [data-act="set-diff"]').count()) === 3, 'кнопка настроек в верхней панели: выбор сложности, звук, текст');
+  await page.locator('.settings-sheet [data-act="set-diff"][data-arg="normal"]').click();
+  ok(await page.evaluate(() => A.state.difficulty === 'normal' && !!A.ui.view.settings), 'сложность меняется из настроек, окно остаётся открытым');
+  await page.evaluate(() => A.ui.back());
+  ok(!(await has('.settings-sheet')), '«назад» закрывает настройки');
+  await click('settings');
+  await page.locator('.settings-sheet [data-act="set-diff"][data-arg="easy"]').click();
+  await page.locator('.settings-sheet .btn[data-act="close-sheet"]').click();
+  ok(await page.evaluate(() => A.state.difficulty === 'easy') && !(await has('.settings-sheet')), '«Готово» закрывает настройки, выбрана лёгкая');
+  // лёгкая: беседа без ограничения вопросов
+  await page.evaluate(() => {
+    const s = A.state;
+    s.energy = 20;
+    s.activity = { action: 'check', arg: null, steps: [{ type: 'case', id: 'c_depression', mode: 'seminar' }], i: 0, results: [], snap: null };
+    A.ui.render({ scroll: 'top' });
+  });
+  for (let i = 0; i < 12 && (await has('[data-act="cs-ask"]:not([data-arg="repair"])')); i++) await page.locator('[data-act="cs-ask"]:not([data-arg="repair"])').first().click();
+  const easy = await page.evaluate(() => { const p = A.state.activity.steps[0].p; return { asked: p.asked.filter((x) => x !== 'repair').length, n: A.data.caseById.c_depression.q.length }; });
+  ok(easy.asked === easy.n && /без ограничений/.test(await page.locator('.talk-meta').textContent()), 'лёгкая: беседа без ограничений — заданы все ' + easy.asked + ' вопросов даже при усталости');
+  await page.evaluate(() => { A.state.activity = null; A.ui.render({ scroll: 'top' }); });
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((k) => /save/i.test(k)) || 'x') || 'null'));
   ok(!saved || saved.difficulty === 'easy' || (saved.state && saved.state.difficulty === 'easy'), 'сложность сохранена');
 

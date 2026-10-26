@@ -44,7 +44,9 @@
       },
       maxQ: 0,
       qBase: (c.maxQ || 5) - (G.hard(s) ? 1 : 0),
-      qMods: CS.budgetMods(s, c, G.hard(s)),
+      qMods: G.difficulty(s) === 'easy' ? [] : CS.budgetMods(s, c, G.hard(s)),
+      // лёгкая игра: беседа без ограничения вопросов (оценка — как за обычные пять)
+      free: G.difficulty(s) === 'easy',
       log: [],
       tired: s.energy < 30 || s.flags.wokeTired,
       hard: G.hard(s),
@@ -53,7 +55,7 @@
     };
     // Порядок вопросов: оставляем авторскую логику — сначала «открывающие», но слегка перемешиваем
     p.order.q = Array.from({ length: c.q.length }, (_, i) => i);
-    p.maxQ = CS.budget(p);
+    p.maxQ = p.free ? c.q.length + 2 : CS.budget(p);
     return p;
   };
 
@@ -196,7 +198,7 @@
 
     if (parts.indexOf('talk') >= 0) {
       const pos = c.q.map((q) => q.v).filter((v) => v > 0).sort((a, b) => b - a);
-      const best = pos.slice(0, p.maxQ).reduce((a, b) => a + b, 0) || 1;
+      const best = pos.slice(0, p.free ? c.maxQ || 5 : p.maxQ).reduce((a, b) => a + b, 0) || 1;
       let got = 0;
       p.asked.forEach((qi) => {
         if (qi === 'repair') return;

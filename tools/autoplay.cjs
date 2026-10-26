@@ -491,8 +491,9 @@ const cdp = flag('--cdp', null) || androidPkg;
           }
           if (p.stage === 'talk') {
             const left = p.maxQ - p.asked.length;
-            if (left > 0) {
-              const order = c.q.map((q, i) => ({ i, v: (q.crit ? 10 : 0) + q.v })).filter((o) => p.asked.indexOf(o.i) < 0).sort((a, b) => b.v - a.v);
+            // лёгкая игра: вопросов без ограничений — «умный» игрок останавливается на обычных пяти
+            if (left > 0 && !(p.free && p.asked.length >= (c.maxQ || 5))) {
+              const order = c.q.map((q, i) => ({ i, v: (q.crit ? 10 : 0) + q.v })).filter((o) => p.asked.indexOf(o.i) < 0 && c.q[o.i].v >= 0).sort((a, b) => b.v - a.v);
               if (order.length) return cl('[data-act="cs-ask"][data-arg="' + order[0].i + '"]') ? 'smart-ask' : null;
             }
           }

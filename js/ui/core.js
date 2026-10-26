@@ -56,9 +56,10 @@
     h(el.dataset.arg, el, e);
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && (UI.view.picker || UI.view.confirm)) {
+    if (e.key === 'Escape' && (UI.view.picker || UI.view.confirm || UI.view.settings)) {
       UI.view.picker = null;
       UI.view.confirm = null;
+      UI.view.settings = null;
       UI.render();
     }
   });
@@ -79,7 +80,8 @@
       '<header class="hud"><div class="wrap">' +
       '<div class="hud-top"><span class="hud-date">' + C.fmtShort(s.day) + '</span>' +
       '<span class="hud-slot">' + C.SLOTS[s.slot] + ' <span class="dim">' + C.SLOT_TIME[s.slot] + '</span></span>' +
-      '<span class="hud-money' + (s.money < 0 ? ' neg' : '') + '">' + U.money(s.money) + '</span></div>' +
+      '<span class="hud-money' + (s.money < 0 ? ' neg' : '') + '">' + U.money(s.money) + '</span>' +
+      '<button type="button" class="hud-set" data-act="settings" aria-label="Настройки: сложность, звук, текст">' + UI.icon('settings') + '</button></div>' +
       '<div class="bars">' +
       bar('Энергия', s.energy, maxE, 'energy', s.energy < 25) +
       bar('Стресс', s.stress, 100, 'stress', s.stress > 75) +
@@ -230,8 +232,40 @@
   };
 
   /* ---------- Оверлеи: выбор варианта, подтверждение, тост ---------- */
+  /** Выбор сложности: три варианта с описанием — в настройках и в меню. */
+  UI.diffList = function (s) {
+    const cur = G.difficulty(s);
+    return (
+      '<div class="choices diff-list" role="group" aria-label="Сложность">' +
+      Object.keys(D.difficulty)
+        .map(
+          (k) =>
+            '<button type="button" class="opt choice" data-act="set-diff" data-arg="' + k + '" aria-pressed="' + (cur === k) + '"><span class="opt-box radio" aria-hidden="true"></span>' +
+            '<span class="opt-main"><span class="opt-t">' + U.esc(D.difficulty[k].name) + '</span><span class="opt-sub">' + U.esc(D.difficulty[k].desc) + '</span></span></button>'
+        )
+        .join('') +
+      '</div><p class="small dim">Новая сложность действует со следующего пациента.</p>'
+    );
+  };
+
+  /** Быстрые настройки (кнопка в верхней панели): сложность, звук, крупный текст. */
+  function settingsSheet(s) {
+    const big = !!A.store.prefs().bigText;
+    const snd = UI.screens && UI.screens.soundToggle ? UI.screens.soundToggle() : '';
+    return (
+      '<div class="sheet-back" data-act="close-sheet"></div><div class="sheet settings-sheet" role="dialog" aria-modal="true" aria-label="Настройки">' +
+      '<div class="sheet-head"><b>Настройки</b><button type="button" class="x" data-act="close-sheet" aria-label="Закрыть">' + UI.icon('x') + '</button></div>' +
+      '<div class="sheet-list"><h3 class="step-h">Сложность</h3>' + UI.diffList(s) +
+      (snd ? '<h3 class="step-h">Звук</h3>' + snd : '') +
+      '<h3 class="step-h">Чтение</h3><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + big + '">' + (big ? 'Обычный текст' : 'Крупный текст') + '</button></div>' +
+      '<div class="row-btns"><button type="button" class="btn primary wide" data-act="close-sheet">Готово</button></div>' +
+      '</div></div>'
+    );
+  }
+
   UI.overlays = function (s) {
     let out = '';
+    if (UI.view.settings && s) out += settingsSheet(s);
     const p = UI.view.picker;
     if (p && s) {
       const a = A.actions.byId[p];
@@ -343,6 +377,12 @@
   UI.on('close-sheet', () => {
     UI.view.picker = null;
     UI.view.confirm = null;
+    UI.view.settings = null;
+    UI.render();
+  });
+  UI.on('settings', () => {
+    if (!A.state) return;
+    UI.view.settings = true;
     UI.render();
   });
   UI.on('confirm-yes', () => {
@@ -356,9 +396,10 @@
       false — пусть приложение свернётся. Во время пары, приёма или экзамена назад не уходим. */
   UI.back = function () {
     const v = UI.view;
-    if (v.confirm || v.picker) {
+    if (v.confirm || v.picker || v.settings) {
       v.confirm = null;
       v.picker = null;
+      v.settings = null;
       UI.render();
       return true;
     }

@@ -57,7 +57,7 @@ function solveCase(c, mode, exam) {
     const order = c.q.map((q, i) => ({ i, v: q.v + (q.crit ? 3 : 0) + (chance(skill) ? 0 : rand() * 6 - 3) })).sort((a, b) => b.v - a.v);
     // время беседы на сложном уровне меняется по ходу (контакт) — спрашиваем, пока остались вопросы
     for (const o of order) {
-      if (CS.questionsLeft(p) <= 0) break;
+      if (CS.questionsLeft(p) <= 0 || (p.free && p.asked.length >= (c.maxQ || 5) + 1)) break;
       CS.ask(c, p, o.i);
     }
   }

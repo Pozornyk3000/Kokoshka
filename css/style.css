@@ -2727,3 +2727,34 @@ mark.mse-trap {
 .mse-verdict {
   margin-top: 12px;
 }
+
+/* ---------- Кнопка настроек в верхней панели ---------- */
+.hud-set {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: -6px -6px -6px 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.hud-set:hover,
+.hud-set:focus-visible {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+.hud-set .ico {
+  width: 20px;
+  height: 20px;
+}
+.settings-sheet .step-h:first-child {
+  margin-top: 4px;
+}
+.diff-list .opt-sub {
+  margin-top: 2px;
+}

@@ -506,6 +506,7 @@
     return (
       UI.hud(s) +
       '<main class="wrap menu"><h1 class="display page-h">Меню</h1>' +
+      '<section class="card menu-diff"><h2 class="h2">Сложность</h2>' + UI.diffList(s) + '<p class="small dim">Быстро поменять сложность, звук и размер текста можно и кнопкой настроек в верхней панели.</p></section>' +
       '<section class="card"><h2 class="h2">Справочники</h2><p class="dim small">Препараты с дозами, противопоказаниями и взаимодействиями, клинические рекомендации Минздрава, симптомы и конспекты лекций.</p><div class="row-btns">' +
       '<button type="button" class="btn" data-act="menu-ref" data-arg="drugs">Препараты</button>' +
       '<button type="button" class="btn" data-act="menu-ref" data-arg="kr">Клинические рекомендации</button>' +
@@ -531,9 +532,6 @@
           '<label class="field vol" for="sound-vol"><span class="label">Громкость</span><input id="sound-vol" type="range" min="0" max="100" step="5" value="' + Math.round(A.sound.volume() * 100) + '"' + (A.sound.enabled() ? '' : ' disabled') + '></label></section>'
         : '') +
       '<section class="card"><h2 class="h2">Чтение</h2><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + !!prefs.bigText + '">' + (prefs.bigText ? 'Обычный текст' : 'Крупный текст') + '</button></div></section>' +
-      '<section class="card"><h2 class="h2">Сложность</h2><p class="dim small">' + U.esc(D.difficulty[G.difficulty(s)].desc) + '</p><div class="seg segb" role="group" aria-label="Сложность">' +
-      Object.keys(D.difficulty).map((k) => '<button type="button" class="seg-b" data-act="set-diff" data-arg="' + k + '" aria-pressed="' + (G.difficulty(s) === k) + '">' + U.esc(D.difficulty[k].name) + '</button>').join('') +
-      '</div><p class="small dim">Новая сложность действует со следующего пациента.</p></section>' +
       '<section class="card"><h2 class="h2">Игра</h2><p class="dim small">Режим: ' + U.esc((D.modes[s.mode] || D.modes.full).name) + '.</p><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
       '</main>' +
       UI.tabbar('menu')

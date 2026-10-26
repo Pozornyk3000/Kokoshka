@@ -2783,6 +2783,37 @@ mark.mse-trap {
   margin-top: 12px;
 }
 
+/* ---------- Кнопка настроек в верхней панели ---------- */
+.hud-set {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: -6px -6px -6px 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.hud-set:hover,
+.hud-set:focus-visible {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+.hud-set .ico {
+  width: 20px;
+  height: 20px;
+}
+.settings-sheet .step-h:first-child {
+  margin-top: 4px;
+}
+.diff-list .opt-sub {
+  margin-top: 2px;
+}
+
 </style>
 </head>
 <body>
@@ -3928,11 +3959,11 @@ mark.mse-trap {
   D.difficulty = {
     easy: {
       name: 'Лёгкая',
-      desc: 'Больше подсказок «клинического чутья», в листе назначений отмечены препараты первой линии по клиническим рекомендациям.',
+      desc: 'Беседа без ограничения вопросов, больше подсказок «клинического чутья», в листе назначений отмечены препараты первой линии по клиническим рекомендациям.',
     },
     normal: {
       name: 'Обычная',
-      desc: 'Диагноз выбираете из нескольких вариантов, подсказки — по мере знаний темы.',
+      desc: 'Диагноз выбираете из нескольких вариантов, в беседе — пять вопросов (усталость отнимает один), подсказки — по мере знаний темы.',
     },
     hard: {
       name: 'Сложная',
@@ -25350,7 +25381,9 @@ mark.mse-trap {
       },
       maxQ: 0,
       qBase: (c.maxQ || 5) - (G.hard(s) ? 1 : 0),
-      qMods: CS.budgetMods(s, c, G.hard(s)),
+      qMods: G.difficulty(s) === 'easy' ? [] : CS.budgetMods(s, c, G.hard(s)),
+      // лёгкая игра: беседа без ограничения вопросов (оценка — как за обычные пять)
+      free: G.difficulty(s) === 'easy',
       log: [],
       tired: s.energy < 30 || s.flags.wokeTired,
       hard: G.hard(s),
@@ -25359,7 +25392,7 @@ mark.mse-trap {
     };
     // Порядок вопросов: оставляем авторскую логику — сначала «открывающие», но слегка перемешиваем
     p.order.q = Array.from({ length: c.q.length }, (_, i) => i);
-    p.maxQ = CS.budget(p);
+    p.maxQ = p.free ? c.q.length + 2 : CS.budget(p);
     return p;
   };
 
@@ -25502,7 +25535,7 @@ mark.mse-trap {
 
     if (parts.indexOf('talk') >= 0) {
       const pos = c.q.map((q) => q.v).filter((v) => v > 0).sort((a, b) => b - a);
-      const best = pos.slice(0, p.maxQ).reduce((a, b) => a + b, 0) || 1;
+      const best = pos.slice(0, p.free ? c.maxQ || 5 : p.maxQ).reduce((a, b) => a + b, 0) || 1;
       let got = 0;
       p.asked.forEach((qi) => {
         if (qi === 'repair') return;
@@ -36168,6 +36201,8 @@ mark.mse-trap {
     card: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16.2c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4"/><path d="M14.5 10h3.5M14.5 13h3.5"/>',
     book: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 0 4 20.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5a1.5 1.5 0 0 1 1.5 1.5z"/><path d="M11 19h2"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    // ползунки — настройки
+    settings: '<path d="M4 7h8.5M16.5 7H20M4 17h3.5M11.5 17H20"/><circle cx="14.5" cy="7" r="2"/><circle cx="9.5" cy="17" r="2"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r=".6" fill="currentColor"/>',
     check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
@@ -36255,9 +36290,10 @@ mark.mse-trap {
     h(el.dataset.arg, el, e);
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && (UI.view.picker || UI.view.confirm)) {
+    if (e.key === 'Escape' && (UI.view.picker || UI.view.confirm || UI.view.settings)) {
       UI.view.picker = null;
       UI.view.confirm = null;
+      UI.view.settings = null;
       UI.render();
     }
   });
@@ -36278,7 +36314,8 @@ mark.mse-trap {
       '<header class="hud"><div class="wrap">' +
       '<div class="hud-top"><span class="hud-date">' + C.fmtShort(s.day) + '</span>' +
       '<span class="hud-slot">' + C.SLOTS[s.slot] + ' <span class="dim">' + C.SLOT_TIME[s.slot] + '</span></span>' +
-      '<span class="hud-money' + (s.money < 0 ? ' neg' : '') + '">' + U.money(s.money) + '</span></div>' +
+      '<span class="hud-money' + (s.money < 0 ? ' neg' : '') + '">' + U.money(s.money) + '</span>' +
+      '<button type="button" class="hud-set" data-act="settings" aria-label="Настройки: сложность, звук, текст">' + UI.icon('settings') + '</button></div>' +
       '<div class="bars">' +
       bar('Энергия', s.energy, maxE, 'energy', s.energy < 25) +
       bar('Стресс', s.stress, 100, 'stress', s.stress > 75) +
@@ -36429,8 +36466,40 @@ mark.mse-trap {
   };
 
   /* ---------- Оверлеи: выбор варианта, подтверждение, тост ---------- */
+  /** Выбор сложности: три варианта с описанием — в настройках и в меню. */
+  UI.diffList = function (s) {
+    const cur = G.difficulty(s);
+    return (
+      '<div class="choices diff-list" role="group" aria-label="Сложность">' +
+      Object.keys(D.difficulty)
+        .map(
+          (k) =>
+            '<button type="button" class="opt choice" data-act="set-diff" data-arg="' + k + '" aria-pressed="' + (cur === k) + '"><span class="opt-box radio" aria-hidden="true"></span>' +
+            '<span class="opt-main"><span class="opt-t">' + U.esc(D.difficulty[k].name) + '</span><span class="opt-sub">' + U.esc(D.difficulty[k].desc) + '</span></span></button>'
+        )
+        .join('') +
+      '</div><p class="small dim">Новая сложность действует со следующего пациента.</p>'
+    );
+  };
+
+  /** Быстрые настройки (кнопка в верхней панели): сложность, звук, крупный текст. */
+  function settingsSheet(s) {
+    const big = !!A.store.prefs().bigText;
+    const snd = UI.screens && UI.screens.soundToggle ? UI.screens.soundToggle() : '';
+    return (
+      '<div class="sheet-back" data-act="close-sheet"></div><div class="sheet settings-sheet" role="dialog" aria-modal="true" aria-label="Настройки">' +
+      '<div class="sheet-head"><b>Настройки</b><button type="button" class="x" data-act="close-sheet" aria-label="Закрыть">' + UI.icon('x') + '</button></div>' +
+      '<div class="sheet-list"><h3 class="step-h">Сложность</h3>' + UI.diffList(s) +
+      (snd ? '<h3 class="step-h">Звук</h3>' + snd : '') +
+      '<h3 class="step-h">Чтение</h3><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + big + '">' + (big ? 'Обычный текст' : 'Крупный текст') + '</button></div>' +
+      '<div class="row-btns"><button type="button" class="btn primary wide" data-act="close-sheet">Готово</button></div>' +
+      '</div></div>'
+    );
+  }
+
   UI.overlays = function (s) {
     let out = '';
+    if (UI.view.settings && s) out += settingsSheet(s);
     const p = UI.view.picker;
     if (p && s) {
       const a = A.actions.byId[p];
@@ -36542,6 +36611,12 @@ mark.mse-trap {
   UI.on('close-sheet', () => {
     UI.view.picker = null;
     UI.view.confirm = null;
+    UI.view.settings = null;
+    UI.render();
+  });
+  UI.on('settings', () => {
+    if (!A.state) return;
+    UI.view.settings = true;
     UI.render();
   });
   UI.on('confirm-yes', () => {
@@ -36555,9 +36630,10 @@ mark.mse-trap {
       false — пусть приложение свернётся. Во время пары, приёма или экзамена назад не уходим. */
   UI.back = function () {
     const v = UI.view;
-    if (v.confirm || v.picker) {
+    if (v.confirm || v.picker || v.settings) {
       v.confirm = null;
       v.picker = null;
+      v.settings = null;
       UI.render();
       return true;
     }
@@ -37221,6 +37297,7 @@ mark.mse-trap {
     return (
       UI.hud(s) +
       '<main class="wrap menu"><h1 class="display page-h">Меню</h1>' +
+      '<section class="card menu-diff"><h2 class="h2">Сложность</h2>' + UI.diffList(s) + '<p class="small dim">Быстро поменять сложность, звук и размер текста можно и кнопкой настроек в верхней панели.</p></section>' +
       '<section class="card"><h2 class="h2">Справочники</h2><p class="dim small">Препараты с дозами, противопоказаниями и взаимодействиями, клинические рекомендации Минздрава, симптомы и конспекты лекций.</p><div class="row-btns">' +
       '<button type="button" class="btn" data-act="menu-ref" data-arg="drugs">Препараты</button>' +
       '<button type="button" class="btn" data-act="menu-ref" data-arg="kr">Клинические рекомендации</button>' +
@@ -37246,9 +37323,6 @@ mark.mse-trap {
           '<label class="field vol" for="sound-vol"><span class="label">Громкость</span><input id="sound-vol" type="range" min="0" max="100" step="5" value="' + Math.round(A.sound.volume() * 100) + '"' + (A.sound.enabled() ? '' : ' disabled') + '></label></section>'
         : '') +
       '<section class="card"><h2 class="h2">Чтение</h2><div class="row-btns"><button type="button" class="btn" data-act="big-text" aria-pressed="' + !!prefs.bigText + '">' + (prefs.bigText ? 'Обычный текст' : 'Крупный текст') + '</button></div></section>' +
-      '<section class="card"><h2 class="h2">Сложность</h2><p class="dim small">' + U.esc(D.difficulty[G.difficulty(s)].desc) + '</p><div class="seg segb" role="group" aria-label="Сложность">' +
-      Object.keys(D.difficulty).map((k) => '<button type="button" class="seg-b" data-act="set-diff" data-arg="' + k + '" aria-pressed="' + (G.difficulty(s) === k) + '">' + U.esc(D.difficulty[k].name) + '</button>').join('') +
-      '</div><p class="small dim">Новая сложность действует со следующего пациента.</p></section>' +
       '<section class="card"><h2 class="h2">Игра</h2><p class="dim small">Режим: ' + U.esc((D.modes[s.mode] || D.modes.full).name) + '.</p><div class="row-btns"><button type="button" class="btn" data-act="to-title">На титульный экран</button><button type="button" class="btn ghost" data-act="about">Об игре</button><button type="button" class="btn danger" data-act="new">Новая игра</button></div></section>' +
       '</main>' +
       UI.tabbar('menu')
@@ -37664,22 +37738,23 @@ mark.mse-trap {
     if (mode === 'seminar' && c.tutor) out += '<p class="tutor"><span class="hand">' + U.esc(c.tutor) + '</span></p>';
     out += ACT.transcript(c, p, true, mode !== 'exam');
     out +=
-      '<div class="talk-meta"><span>Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
-      (p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
-    if (left > 0) {
-      const opts = p.order.q
-        .filter((i) => p.asked.indexOf(i) < 0)
+      '<div class="talk-meta"><span>' + (p.free ? 'Вопросов: <b>' + p.asked.length + '</b> · без ограничений' : 'Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ) + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
+      (p.free ? '' : p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
+    const rest = p.order.q.filter((i) => p.asked.indexOf(i) < 0);
+    if (left > 0 && (rest.length || (p.rapport < 45 && p.repaired < 2))) {
+      const opts = rest
         .map((i) => {
           const q = c.q[i];
           const hint = p.hints.q === i;
           return '<button type="button" class="opt ask' + (hint ? ' hinted' : '') + '" data-act="cs-ask" data-arg="' + i + '"><span class="opt-main"><span class="opt-t">' + U.esc(U.t(q.t)) + '</span>' + (hint ? '<span class="hint-tag">клиническое чутьё: важный вопрос</span>' : '') + '</span></button>';
         });
       if (p.rapport < 45 && p.repaired < 2) {
-        opts.unshift('<button type="button" class="opt ask repair" data-act="cs-ask" data-arg="repair"><span class="opt-main"><span class="opt-t">' + U.esc(CS.repairText) + '</span><span class="hint-tag">восстановить контакт · тратит вопрос</span></span></button>');
+        opts.unshift('<button type="button" class="opt ask repair" data-act="cs-ask" data-arg="repair"><span class="opt-main"><span class="opt-t">' + U.esc(CS.repairText) + '</span><span class="hint-tag">восстановить контакт' + (p.free ? '' : ' · тратит вопрос') + '</span></span></button>');
       }
       out += '<div class="opts asks">' + U.t(opts.join('')) + '</div>';
-    } else out += '<p class="note">Время беседы вышло. Пора описать статус.</p>';
-    out += '<div class="next-row">' + btn('Перейти к осмотру', 'cs-next', null, left === 0 ? 'primary wide' : 'wide') + '</div>';
+    } else out += '<p class="note">' + (p.free ? 'Все вопросы заданы.' : 'Время беседы вышло.') + ' Пора описать статус.</p>';
+    const enough = left === 0 || (p.free && p.asked.length >= (c.maxQ || 5));
+    out += '<div class="next-row">' + btn('Перейти к осмотру', 'cs-next', null, enough ? 'primary wide' : 'wide') + '</div>';
     return U.t(out);
   };
 
@@ -37694,7 +37769,7 @@ mark.mse-trap {
     const ok = !missed.length && !bad;
     let out =
       '<div class="feedback ' + (ok ? 'ok' : 'bad') + ' talk-sum"><b>' + (ok ? 'Беседа проведена верно.' : 'Беседа окончена — есть пробелы.') + '</b> ' +
-      'Вопросов: ' + asked.length + ' из ' + p.maxQ + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
+      'Вопросов: ' + asked.length + (p.free ? '' : ' из ' + p.maxQ) + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
     if (missed.length) out += '<ul>' + missed.map((q) => '<li>' + U.esc(U.t(CS.critNote(q.crit, q.t))) + '</li>').join('') + '</ul>';
     else if (asked.length) out += ' Обязательные вопросы заданы.';
     return out + '</div>';

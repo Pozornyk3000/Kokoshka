@@ -320,22 +320,23 @@
     if (mode === 'seminar' && c.tutor) out += '<p class="tutor"><span class="hand">' + U.esc(c.tutor) + '</span></p>';
     out += ACT.transcript(c, p, true, mode !== 'exam');
     out +=
-      '<div class="talk-meta"><span>Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
-      (p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
-    if (left > 0) {
-      const opts = p.order.q
-        .filter((i) => p.asked.indexOf(i) < 0)
+      '<div class="talk-meta"><span>' + (p.free ? 'Вопросов: <b>' + p.asked.length + '</b> · без ограничений' : 'Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ) + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
+      (p.free ? '' : p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
+    const rest = p.order.q.filter((i) => p.asked.indexOf(i) < 0);
+    if (left > 0 && (rest.length || (p.rapport < 45 && p.repaired < 2))) {
+      const opts = rest
         .map((i) => {
           const q = c.q[i];
           const hint = p.hints.q === i;
           return '<button type="button" class="opt ask' + (hint ? ' hinted' : '') + '" data-act="cs-ask" data-arg="' + i + '"><span class="opt-main"><span class="opt-t">' + U.esc(U.t(q.t)) + '</span>' + (hint ? '<span class="hint-tag">клиническое чутьё: важный вопрос</span>' : '') + '</span></button>';
         });
       if (p.rapport < 45 && p.repaired < 2) {
-        opts.unshift('<button type="button" class="opt ask repair" data-act="cs-ask" data-arg="repair"><span class="opt-main"><span class="opt-t">' + U.esc(CS.repairText) + '</span><span class="hint-tag">восстановить контакт · тратит вопрос</span></span></button>');
+        opts.unshift('<button type="button" class="opt ask repair" data-act="cs-ask" data-arg="repair"><span class="opt-main"><span class="opt-t">' + U.esc(CS.repairText) + '</span><span class="hint-tag">восстановить контакт' + (p.free ? '' : ' · тратит вопрос') + '</span></span></button>');
       }
       out += '<div class="opts asks">' + U.t(opts.join('')) + '</div>';
-    } else out += '<p class="note">Время беседы вышло. Пора описать статус.</p>';
-    out += '<div class="next-row">' + btn('Перейти к осмотру', 'cs-next', null, left === 0 ? 'primary wide' : 'wide') + '</div>';
+    } else out += '<p class="note">' + (p.free ? 'Все вопросы заданы.' : 'Время беседы вышло.') + ' Пора описать статус.</p>';
+    const enough = left === 0 || (p.free && p.asked.length >= (c.maxQ || 5));
+    out += '<div class="next-row">' + btn('Перейти к осмотру', 'cs-next', null, enough ? 'primary wide' : 'wide') + '</div>';
     return U.t(out);
   };
 
@@ -350,7 +351,7 @@
     const ok = !missed.length && !bad;
     let out =
       '<div class="feedback ' + (ok ? 'ok' : 'bad') + ' talk-sum"><b>' + (ok ? 'Беседа проведена верно.' : 'Беседа окончена — есть пробелы.') + '</b> ' +
-      'Вопросов: ' + asked.length + ' из ' + p.maxQ + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
+      'Вопросов: ' + asked.length + (p.free ? '' : ' из ' + p.maxQ) + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
     if (missed.length) out += '<ul>' + missed.map((q) => '<li>' + U.esc(U.t(CS.critNote(q.crit, q.t))) + '</li>').join('') + '</ul>';
     else if (asked.length) out += ' Обязательные вопросы заданы.';
     return out + '</div>';
