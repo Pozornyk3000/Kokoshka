@@ -212,13 +212,18 @@ const ok = (cond, msg) => {
     const c = A.ui.mse.cur();
     return A.mse.items(c.st, c.st.i).map((o, k) => (o.k === 'ok' || (withTrap && o.k === 'trap') ? k : -1)).filter((k) => k >= 0);
   }, withTrap);
+  // проверить раздел и перейти дальше (на последнем — к итогам)
+  const advance = async (last) => {
+    await click('mse-check');
+    await click(last ? 'mse-done' : 'mse-next');
+  };
   const nSc = await page.evaluate(() => A.mse.scenarios().length);
   ok(nSc >= 15 && (await page.locator('[data-act="tr-mse"]').count()) === nSc + 1, 'карточка конструктора: ' + nSc + ' пациентов и «случайный пациент»');
   await click('tr-mse', 'st_norm');
   let m = await mse();
   ok(m && m.id === 'st_norm' && m.i === 0 && m.sel.length === (await page.evaluate(() => A.mse.sections().length)), 'конструктор открылся: 11 разделов, первый — внешний вид');
   ok(await has('details.mse-mat[open] .mse-m'), 'на первом разделе материал приёма раскрыт');
-  ok(await has('[data-act="mse-next"][aria-disabled="true"]'), '«Дальше» недоступно, пока ничего не отмечено');
+  ok(await has('[data-act="mse-check"][aria-disabled="true"]'), '«Проверить» недоступно, пока ничего не отмечено');
   const nSec = m.sel.length;
   for (let i = 0; i < nSec; i++) {
     for (const k of await mark(i === 2)) await click('mse-tog', k);
@@ -227,10 +232,25 @@ const ok = (cond, msg) => {
       ok(/Сознание ясное/.test(await page.locator('.mse-rec .record').textContent()), 'запись в карте собирается по ходу');
       await click('mse-prev');
       m = await mse();
-      ok(m.i === 0 && m.sel[0] > 0, '«Назад» возвращает к прошлому разделу, отметки на месте');
+      ok(m.i === 0 && m.sel[0] > 0 && (await has('.opt.correct[aria-disabled="true"]')), '«Назад» возвращает к проверенному разделу, отметки на месте');
       await click('mse-next');
     }
-    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+    if (i === 2) {
+      await click('mse-check');
+      ok((await has('.mse-verdict')) && (await has('.opt.wrong .opt-sub')) && /Ярлык/.test(await page.locator('.opt.wrong').first().textContent()), 'после «Проверить» — разбор раздела: ярлык отмечен и объяснён');
+      const before = (await mse()).sel[2];
+      await page.evaluate(() => { const b = document.querySelector('[data-act="mse-tog"]'); b && b.click(); });
+      ok((await mse()).sel[2] === before, 'проверенный раздел изменить нельзя');
+      await click('mse-next');
+      continue;
+    }
+    if (i === 0) {
+      await click('mse-check');
+      ok((await has('.mse-verdict.ok')) && /Точно/.test(await page.locator('.mse-verdict').textContent()), 'верный раздел — «Точно»');
+      await click('mse-next');
+      continue;
+    }
+    await advance(i === nSec - 1);
   }
   m = await mse();
   ok(m.done && m.res.traps === 1 && m.res.pct < 100 && m.res.pct >= 85, 'статус с одним ярлыком: ' + m.res.pct + '%, ярлыков ' + m.res.traps);
@@ -243,7 +263,7 @@ const ok = (cond, msg) => {
   ok(m.id === 'st_norm' && !m.done && m.sel.every((n) => n === 0), '«Ещё раз» — тот же пациент с чистого листа');
   for (let i = 0; i < nSec; i++) {
     for (const k of await mark(false)) await click('mse-tog', k);
-    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+    await advance(i === nSec - 1);
   }
   m = await mse();
   ok(m.res.pct === 100 && m.ach.indexOf('mse_ace') >= 0, 'безошибочный статус — 100% и «Статус как в учебнике»');
@@ -286,6 +306,46 @@ const ok = (cond, msg) => {
   // пролог: две сюжетные сцены
   for (let i = 0; i < 6 && (await page.evaluate(() => !!A.state.activity)); i++) await click('step-next');
   ok(await page.evaluate(() => !A.state.activity), 'пролог пройден');
+
+  console.log('Беседа на сложном уровне: время беседы и комментарий к каждому вопросу');
+  await page.evaluate(() => {
+    const s = A.state;
+    s.energy = 80;
+    s.stress = 20;
+    s.slot = 1;
+    s.flags.wokeTired = false;
+    s.activity = { action: 'check', arg: null, steps: [{ type: 'case', id: 'c_depression', mode: 'seminar' }], i: 0, results: [], snap: null };
+    A.ui.render({ scroll: 'top' });
+  });
+  const talk = () => page.evaluate(() => { const p = A.state.activity.steps[0].p; return { maxQ: p.maxQ, asked: p.asked.length, mods: p.qMods.map((x) => x.k), log: p.log.map((l) => (l.v ? l.v.lvl : '-') + (l.ev ? '+' + l.ev.lvl : '')) }; });
+  let tk = await talk();
+  ok(tk.maxQ === 4 && !tk.mods.length && (await has('.qbudget')), 'сложный уровень: база — 4 вопроса вместо 5, расклад виден');
+  const tired = await page.evaluate(() => {
+    const s = A.state;
+    const e = s.energy;
+    s.energy = 45;
+    const a = A.cases.init(s, { id: 'c_depression', mode: 'seminar' }).maxQ;
+    s.energy = 25;
+    const b = A.cases.init(s, { id: 'c_depression', mode: 'seminar' }).maxQ;
+    s.energy = e;
+    return [a, b];
+  });
+  ok(tired[0] === 3 && tired[1] === 2, 'усталость отнимает вопросы: энергия 45 — ' + tired[0] + ', энергия 25 — ' + tired[1]);
+  await click('cs-ask', 4);
+  ok((await has('.qnote.ok')) && /Обязательный вопрос/.test(await page.locator('.qnote').last().textContent()), 'вопрос о суицидальных мыслях — «Верно», с пояснением');
+  await click('cs-ask', 1);
+  tk = await talk();
+  ok(tk.maxQ === 5 && tk.mods.indexOf('contact') >= 0 && /разговорился/.test(await page.locator('.talk').textContent()), 'хороший контакт — ещё один вопрос (' + tk.maxQ + ')');
+  await click('cs-ask', 7);
+  ok((await has('.qnote.bad')) && /Ошибка/.test(await page.locator('.qnote.bad').last().textContent()), 'стыжение — «Ошибка» с объяснением');
+  await click('cs-ask', 6);
+  ok(/Можно лучше/.test(await page.locator('.qnote').last().textContent()), 'малополезный вопрос — «Можно лучше»');
+  await click('cs-ask', 0);
+  tk = await talk();
+  ok(tk.asked === tk.maxQ && (await page.locator('[data-act="cs-ask"]').count()) === 0, 'время беседы вышло — вопросов больше нет');
+  await click('cs-next');
+  ok((await has('.talk-sum')) && /периодах повышенного настроения/.test(await page.locator('.talk-sum').textContent()), 'итог беседы: что из обязательного не спросили');
+  await page.evaluate(() => { A.state.activity = null; A.ui.render({ scroll: 'top' }); });
   await click('tab', 'menu');
   await click('tr-open', 'game');
   ok(await has('.trainer'), 'тренажёр открылся из меню');
@@ -320,7 +380,7 @@ const ok = (cond, msg) => {
       m = await mse();
       ok(m && m.i === 4 && m.sel[4] > 0, 'после перезагрузки практикум продолжается с того же места');
     }
-    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+    await advance(i === nSec - 1);
   }
   ok(await has('.mse-boss'), 'Кандинский комментирует запись');
   await click('mse-close');
@@ -356,12 +416,24 @@ const ok = (cond, msg) => {
   await click('am-mse');
   for (let i = 0; i < nSec; i++) {
     for (const k of await mark(i === 0)) await click('mse-tog', k);
-    await click(i < nSec - 1 ? 'mse-next' : 'mse-done');
+    await advance(i === nSec - 1);
   }
   const am = await page.evaluate((u) => { const pt = A.clinic.byUid(A.state, u); return { mse: pt.mse, rev: pt.rev.list[pt.rev.list.length - 1] }; }, fresh);
   ok(am.mse && am.mse.pct >= 90 && am.mse.traps === 1 && /Психический статус/.test(am.rev.text), 'запись проверил заведующий: ' + am.mse.pct + '%, «' + am.rev.text + '»');
   await click('mse-close');
   ok(!(await has('[data-act="am-mse"]')) && /Ваша запись — \d+%/.test(await page.locator('.folder').textContent()), 'после записи на приёме — статус в карте и оценка');
+
+  console.log('Беседа на приёме: комментарий заведующего, на сложном уровне — лимит тем');
+  await page.evaluate(() => { A.state.difficulty = 'hard'; A.state.energy = 80; A.state.stress = 20; A.ui.render(); });
+  const lim = await page.evaluate((u) => { const pt = A.clinic.byUid(A.state, u); pt.insight = 0.6; A.ui.render(); return A.clinic.talkBudget(A.state, pt); }, fresh);
+  ok(lim.n === 3 && (await has('.qbudget')), 'на первичном приёме — 3 темы, расклад виден');
+  await click('am-talk', 'safety');
+  ok((await has('.talk-out li.boss')) && /Верно|Уместно/.test(await page.locator('.talk-out li.boss').last().textContent()), 'тема «суицидальный риск» — комментарий заведующего');
+  await click('am-talk', 'sleep');
+  await click('am-talk', 'lifestyle');
+  const boss = await page.evaluate(() => [...document.querySelectorAll('.talk-out li.boss')].map((x) => x.textContent));
+  ok(boss.length === 3, 'каждая тема получила комментарий: ' + boss.map((x) => x.split(':')[0]).join(', '));
+  ok((await page.locator('[data-act="am-talk"]:not([aria-disabled="true"])').count()) === 0 && /Время на беседу вышло/.test(await page.locator('.folder').textContent()), 'после трёх тем остальные недоступны');
 
 
   ok(!errors.length, 'ошибок в консоли нет' + (errors.length ? ': ' + errors.join(' | ') : ''));

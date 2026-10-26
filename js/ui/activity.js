@@ -275,21 +275,35 @@
     return head + body;
   };
 
-  ACT.transcript = function (c, p, markLast) {
+  /** Комментарий к вопросу или событие контакта: ✓ верно, ○ можно лучше, ✗ ошибка. */
+  ACT.qnote = function (v) {
+    if (!v) return '';
+    const mark = v.lvl === 'ok' ? '✓' : v.lvl === 'bad' ? '✗' : '○';
+    return '<p class="qnote ' + v.lvl + '"><span class="qmark" aria-hidden="true">' + mark + '</span><b>' + U.esc(v.head) + '.</b> ' + U.inline(U.esc(v.text)) + '</p>';
+  };
+  /** Беседа: реплики и, если notes, комментарии к каждому вопросу (на экзамене их нет). */
+  ACT.transcript = function (c, p, markLast, notes) {
     let out = '<div class="talk"><div class="bubble pt"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.inline(U.esc(c.complaint)) + '</div>';
     p.asked.forEach((qi, n) => {
       const last = markLast && n === p.asked.length - 1;
+      const lg = (p.log && p.log[n]) || {};
+      const tail = (notes ? ACT.qnote(lg.v) : '') + ACT.qnote(lg.ev);
       if (qi === 'repair') {
         out += '<div class="bubble dr"' + (last ? ' data-last' : '') + '><span class="who">Вы</span>' + U.esc(CS.repairText) + '</div>';
-        out += '<div class="bubble pt soft">(' + U.esc(c.patient.sex === 'f' ? 'Она' : 'Он') + ' чуть расслабляется и кивает.)</div>';
+        out += '<div class="bubble pt soft">(' + U.esc(c.patient.sex === 'f' ? 'Она' : 'Он') + ' чуть расслабляется и кивает.)</div>' + tail;
         return;
       }
       const q = c.q[qi];
       const ev = p.evasive && p.evasive.indexOf(qi) >= 0;
       out += '<div class="bubble dr"' + (last ? ' data-last' : '') + '><span class="who">Вы</span>' + U.esc(U.t(q.t)) + '</div>';
-      out += '<div class="bubble pt' + (ev ? ' evasive' : '') + '"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.esc(ev ? CS.evasive(c, qi) : q.a) + '</div>';
+      out += '<div class="bubble pt' + (ev ? ' evasive' : '') + '"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.esc(ev ? CS.evasive(c, qi) : q.a) + '</div>' + tail;
     });
     return out + '</div>';
+  };
+  /** Время беседы на сложном уровне: из чего сложилось число вопросов. */
+  ACT.budgetLine = function (p) {
+    const mods = (p.qMods || []).map((x) => U.esc(x.t) + ' ' + (x.v > 0 ? '+' : '−') + Math.abs(x.v));
+    return '<p class="small dim qbudget">Время беседы: база ' + p.qBase + (mods.length ? ' · ' + mods.join(' · ') : '') + '. Хороший контакт добавляет вопрос, потерянный — отнимает.</p>';
   };
 
   ACT.rapportLabel = function (r) {
@@ -304,10 +318,10 @@
     const [rl, rc] = ACT.rapportLabel(p.rapport);
     let out = '<section class="story case-intro">' + U.md(c.intro) + '</section>';
     if (mode === 'seminar' && c.tutor) out += '<p class="tutor"><span class="hand">' + U.esc(c.tutor) + '</span></p>';
-    out += ACT.transcript(c, p, true);
+    out += ACT.transcript(c, p, true, mode !== 'exam');
     out +=
       '<div class="talk-meta"><span>Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
-      (p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
+      (p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
     if (left > 0) {
       const opts = p.order.q
         .filter((i) => p.asked.indexOf(i) < 0)
@@ -325,9 +339,27 @@
     return U.t(out);
   };
 
+  /** Итог беседы — комментарий к решению закончить расспрос: что из обязательного не спросили. */
+  ACT.talkSummary = function (c, p) {
+    if (p.parts.indexOf('talk') < 0) return '';
+    const asked = p.asked.filter((x) => x !== 'repair');
+    const ev = p.evasive || [];
+    const good = asked.filter((qi) => c.q[qi].v >= 2 && ev.indexOf(qi) < 0).length;
+    const bad = asked.filter((qi) => c.q[qi].v < 0).length;
+    const missed = c.q.filter((q, i) => q.crit && p.asked.indexOf(i) < 0);
+    const ok = !missed.length && !bad;
+    let out =
+      '<div class="feedback ' + (ok ? 'ok' : 'bad') + ' talk-sum"><b>' + (ok ? 'Беседа проведена верно.' : 'Беседа окончена — есть пробелы.') + '</b> ' +
+      'Вопросов: ' + asked.length + ' из ' + p.maxQ + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
+    if (missed.length) out += '<ul>' + missed.map((q) => '<li>' + U.esc(U.t(CS.critNote(q.crit, q.t))) + '</li>').join('') + '</ul>';
+    else if (asked.length) out += ' Обязательные вопросы заданы.';
+    return out + '</div>';
+  };
+
   ACT.statusStage = function (s, c, p, mode) {
     const exam = mode === 'exam';
     let out = '';
+    if (!exam) out += ACT.talkSummary(c, p);
     if (!exam) out += '<details class="talk-fold"><summary>Беседа</summary>' + ACT.transcript(c, p, false) + '</details>';
     out += '<article class="record"><span class="eyebrow">Психический статус</span><p>' + U.esc(c.status.text) + '</p></article>';
     out += '<h2 class="step-h">Какие симптомы вы отмечаете? <span class="dim">Выберите все верные</span></h2><div class="opts">';
@@ -413,6 +445,17 @@
 
     // Разбор по шагам
     out += '<section class="review">';
+    if (p.parts.indexOf('talk') >= 0 && p.asked.length) {
+      out += '<h2 class="step-h">Беседа</h2><ul class="marks">';
+      p.asked.forEach((qi, n) => {
+        const lg = (p.log && p.log[n]) || {};
+        const v = lg.v || CS.verdict(c, qi, (p.evasive || []).indexOf(qi) >= 0, p.rapport);
+        if (!v) return;
+        const t = qi === 'repair' ? 'Восстановить контакт' : U.t(c.q[qi].t);
+        out += '<li class="' + (v.lvl === 'ok' ? 'm-ok' : v.lvl === 'bad' ? 'm-bad' : 'm-miss') + '">' + U.esc(t) + '<span class="m-def"><b>' + U.esc(v.head) + '.</b> ' + U.esc(v.text) + '</span></li>';
+      });
+      out += '</ul>';
+    }
     if (p.parts.indexOf('status') >= 0) {
       out += '<h2 class="step-h">Статус</h2><ul class="marks">';
       c.status.opts.forEach((o, i) => {

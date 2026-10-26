@@ -2656,3 +2656,74 @@ mark.mse-trap {
   gap: 6px;
   font-size: 15px;
 }
+
+/* ---------- Комментарии к вопросам беседы ---------- */
+.talk .qnote {
+  justify-self: stretch;
+}
+.qnote {
+  margin: -2px 0 4px;
+  padding: 6px 10px 7px 30px;
+  position: relative;
+  border-left: 3px solid var(--rule);
+  border-radius: 0 6px 6px 0;
+  background: var(--paper);
+  font-size: 14px;
+  line-height: 1.42;
+  color: var(--ink-2);
+}
+.qnote b {
+  color: var(--ink);
+}
+.qnote .qmark {
+  position: absolute;
+  left: 10px;
+  top: 6px;
+  font-family: var(--f-mono);
+  font-weight: 700;
+}
+.qnote.ok {
+  border-left-color: var(--ok);
+}
+.qnote.ok .qmark {
+  color: var(--ok);
+}
+.qnote.part {
+  border-left-color: var(--warn);
+}
+.qnote.part .qmark {
+  color: var(--warn);
+}
+.qnote.bad {
+  border-left-color: var(--alarm);
+}
+.qnote.bad .qmark {
+  color: var(--alarm);
+}
+.qbudget {
+  margin: -4px 0 10px;
+}
+.talk-sum ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.talk-sum li + li {
+  margin-top: 4px;
+}
+
+.talk-out li.boss {
+  margin-left: 14px;
+  font-size: 0.94em;
+}
+
+/* конструктор статуса: разбор раздела после проверки */
+.opt.missed {
+  border-style: dashed;
+  border-color: var(--ok);
+}
+.opt.missed .opt-box {
+  border-color: var(--ok);
+}
+.mse-verdict {
+  margin-top: 12px;
+}

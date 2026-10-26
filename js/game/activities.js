@@ -42,7 +42,10 @@
         dx: order(c.dx.opts.length),
         tx: order(c.tx.opts.length),
       },
-      maxQ: Math.max(3, (c.maxQ || 5) - (s.energy < 30 ? 1 : 0) - (s.flags.wokeTired ? 1 : 0)),
+      maxQ: 0,
+      qBase: (c.maxQ || 5) - (G.hard(s) ? 1 : 0),
+      qMods: CS.budgetMods(s, c, G.hard(s)),
+      log: [],
       tired: s.energy < 30 || s.flags.wokeTired,
       hard: G.hard(s),
       hints: CS.hints(s, c, step.mode),
@@ -50,7 +53,82 @@
     };
     // Порядок вопросов: оставляем авторскую логику — сначала «открывающие», но слегка перемешиваем
     p.order.q = Array.from({ length: c.q.length }, (_, i) => i);
+    p.maxQ = CS.budget(p);
     return p;
+  };
+
+  /* ---------- Время беседы ----------
+     Обычная игра: вопросов по сценарию случая (обычно 5), усталость отнимает по одному, но не меньше трёх.
+     Сложная игра: база на вопрос меньше; усталость, недосып, стресс и ночь отнимают, опыт в теме добавляет,
+     а по ходу беседы — контакт: пациент разговорился — ещё вопрос, замкнулся — на вопрос меньше. Не меньше двух. */
+  CS.Q_MIN = 3;
+  CS.Q_MIN_HARD = 2;
+  CS.Q_MAX_ADD = 3;
+  CS.budgetMods = function (s, c, hard) {
+    const m = [];
+    const add = (k, v, t) => m.push({ k, v, t });
+    if (!hard) {
+      if (s.energy < 30) add('tired', -1, 'усталость');
+      if (s.flags.wokeTired) add('sleep', -1, 'не выспал{ся|ась}');
+      return m;
+    }
+    if (s.energy < 30) add('tired', -2, 'сильная усталость');
+    else if (s.energy < 55) add('tired', -1, 'усталость');
+    if (s.flags.wokeTired) add('sleep', -1, 'не выспал{ся|ась}');
+    if (s.stress > 70) add('stress', -1, 'стресс');
+    if (s.slot === 3) add('night', -1, 'ночь');
+    if ((s.know[c.topic] || 0) >= 70) add('know', 1, 'опыт в теме');
+    return m;
+  };
+  CS.budget = (p) => U.clamp(p.qBase + (p.qMods || []).reduce((a, x) => a + x.v, 0), p.hard ? CS.Q_MIN_HARD : CS.Q_MIN, p.qBase + CS.Q_MAX_ADD);
+  // сложная игра: контакт меняет время беседы — один раз в каждую сторону
+  CS.GOOD_RAPPORT = 70;
+  CS.LOST_RAPPORT = 30;
+  function contactShift(p) {
+    if (!p.hard || !p.qMods) return null;
+    const has = (k) => p.qMods.some((x) => x.k === k);
+    let ev = null;
+    if (p.rapport >= CS.GOOD_RAPPORT && !has('contact')) {
+      p.qMods.push({ k: 'contact', v: 1, t: 'пациент разговорился' });
+      ev = { lvl: 'ok', head: 'Контакт', text: 'Пациент разговорился — беседа идёт легче: ещё один вопрос.' };
+    } else if (p.rapport < CS.LOST_RAPPORT && !has('closed')) {
+      p.qMods.push({ k: 'closed', v: -1, t: 'пациент замкнулся' });
+      ev = { lvl: 'bad', head: 'Контакт', text: 'Пациент замкнулся — беседа сворачивается: на один вопрос меньше.' };
+    }
+    if (ev) p.maxQ = Math.max(p.asked.length, CS.budget(p));
+    return ev;
+  }
+
+  /* ---------- Комментарий к каждому вопросу ---------- */
+  CS.CRIT_OK = {
+    suicide: 'О суицидальных мыслях спрашивают прямо: вопрос не подталкивает к суициду, а помогает оценить риск.',
+    substance: 'Алкоголь и другие вещества — частая причина и «маска» психических нарушений.',
+    somatic: 'Соматические и лекарственные причины исключают в первую очередь.',
+    safety: 'Риск для пациента и окружающих определяет всю тактику.',
+    mania: 'Подъёмы настроения в прошлом меняют диагноз: при биполярном расстройстве антидепрессант без нормотимика опасен.',
+    onset: 'Острое начало — главный признак делирия и органического поражения.',
+    child: 'При послеродовых нарушениях безопасность ребёнка — обязательный вопрос.',
+    meds: 'Принимаемые лекарства — частая причина неотложных состояний и опасных взаимодействий.',
+  };
+  /** Оценка заданного вопроса: { lvl: ok|part|bad, head, text }. low — контакт был потерян до вопроса. */
+  CS.verdict = function (c, qi, low, rapBefore) {
+    if (qi === 'repair') {
+      return rapBefore < CS.LOST_RAPPORT
+        ? { lvl: 'ok', head: 'Верно', text: 'Признать, что говорить трудно, и объяснить цель расспроса — так возвращают доверие. Без этого ответов не услышать.' }
+        : { lvl: 'ok', head: 'Уместно', text: 'Контакт натянут: пауза и объяснение, зачем вы спрашиваете, помогают пациенту раскрыться.' };
+    }
+    const q = c.q[qi];
+    if (!q) return null;
+    if (q.v < 0) return { lvl: 'bad', head: 'Ошибка', text: U.cap(q.bad || 'такой вопрос вредит контакту') + '.' };
+    let v;
+    if (q.crit) v = { lvl: 'ok', head: 'Верно', text: 'Обязательный вопрос. ' + (CS.CRIT_OK[q.crit] || '') };
+    else if (q.key) v = { lvl: 'ok', head: 'Верно', text: 'Ключевой вопрос: ответ прямо влияет на диагноз и тактику.' };
+    else if (q.v >= 3) v = { lvl: 'ok', head: 'Верно', text: 'Очень полезный вопрос.' };
+    else if (q.v >= 2) v = { lvl: 'ok', head: 'Верно', text: 'Полезный вопрос: уточняет картину.' };
+    else if (q.v >= 1) v = { lvl: 'part', head: 'Можно лучше', text: 'Вопрос мало что даёт: время беседы ограничено — сначала главное.' };
+    else v = { lvl: 'part', head: 'Лишний вопрос', text: 'К диагнозу и тактике он ничего не добавляет.' };
+    if (low) v = { lvl: 'part', head: v.lvl === 'ok' ? 'Вопрос верный, но' : 'Контакт потерян', text: 'Пациент ушёл от ответа: контакт потерян. Сначала восстановите доверие — иначе ответов не услышать.' };
+    return v;
   };
 
   /** Подсказки «клинического чутья» в зависимости от знаний темы. */
@@ -83,20 +161,26 @@
 
   CS.repairText = '«Я вижу, что говорить об этом непросто. Я спрашиваю, чтобы понять, как вам помочь. Вы можете не отвечать, если не готовы».';
 
-  /** Задать вопрос: возвращает видимый ответ. */
+  /** Задать вопрос. В p.log[n] — комментарий к n-му вопросу (и событие контакта на сложном уровне). */
   CS.ask = function (c, p, qi) {
+    p.log = p.log || [];
+    const rapBefore = p.rapport;
     if (qi === 'repair') {
       p.asked.push('repair');
       p.repaired++;
       p.rapport = U.clamp(p.rapport + 18, 0, 100);
+      p.log[p.asked.length - 1] = { v: CS.verdict(c, 'repair', false, rapBefore), ev: contactShift(p) };
       return;
     }
     const q = c.q[qi];
     if (!q || p.asked.indexOf(qi) >= 0) return;
-    const lowBefore = p.rapport < 30;
+    const lowBefore = p.rapport < CS.LOST_RAPPORT;
     p.asked.push(qi);
-    p.rapport = U.clamp(p.rapport + (q.rap != null ? q.rap : q.v > 0 ? 2 : 0), 0, 100);
+    // на сложном уровне хорошие вопросы заметнее укрепляют контакт
+    const gain = p.hard ? (q.v >= 3 ? 6 : q.v >= 2 ? 4 : q.v > 0 ? 1 : 0) : q.v > 0 ? 2 : 0;
+    p.rapport = U.clamp(p.rapport + (q.rap != null ? q.rap : gain), 0, 100);
     if (lowBefore && !q.always) p.evasive = (p.evasive || []).concat([qi]);
+    p.log[p.asked.length - 1] = { v: CS.verdict(c, qi, lowBefore && !q.always, rapBefore), ev: contactShift(p) };
   };
   CS.questionsLeft = (p) => p.maxQ - p.asked.length;
   CS.evasive = function (c, qi) {

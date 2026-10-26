@@ -65,7 +65,7 @@
   MS.toggle = function (st, k) {
     const sec = st && !st.done ? st.secs[st.i] : null;
     k = +k;
-    if (!sec || !(k >= 0 && k < MS.items(st, st.i).length)) return false;
+    if (!sec || sec.checked || !(k >= 0 && k < MS.items(st, st.i).length)) return false;
     const at = sec.sel.indexOf(k);
     if (at >= 0) sec.sel.splice(at, 1);
     else sec.sel.push(k);
@@ -75,44 +75,51 @@
     if (st && !st.done) st.i = U.clamp(st.i + d, 0, st.secs.length - 1);
   };
   MS.last = (st) => st.i >= st.secs.length - 1;
+  /** Проверить текущий раздел: отметки фиксируются, игрок сразу видит разбор. */
+  MS.check = function (st) {
+    const sec = st && !st.done ? st.secs[st.i] : null;
+    if (!sec || !sec.sel.length) return null;
+    sec.checked = true;
+    return MS.secScore(st, st.i);
+  };
 
-  /** Оценка: { pct, traps, exact, per: [{ id, v, mark: ok|part|bad, trap, missed, wrong }] }. */
-  MS.score = function (st) {
-    let sum = 0;
-    let traps = 0;
-    const per = st.secs.map((sec, si) => {
-      const items = MS.items(st, si);
-      const K = items.filter((o) => o.k === 'ok').length || 1;
-      let tp = 0;
-      let fp = 0;
-      let trap = false;
-      sec.sel.forEach((k) => {
-        const o = items[k];
-        if (!o) return;
-        if (o.k === 'ok') tp++;
-        else {
-          fp++;
-          if (o.k === 'trap') trap = true;
-        }
-      });
-      const v = U.clamp((tp - 0.75 * fp) / K, 0, 1);
-      sum += v;
-      if (trap) traps++;
-      return {
-        id: sec.id,
-        v,
-        mark: v >= 0.999 ? 'ok' : v >= 0.5 ? 'part' : 'bad',
-        trap,
-        missed: items.filter((o, k) => o.k === 'ok' && sec.sel.indexOf(k) < 0),
-        wrong: sec.sel
-          .slice()
-          .sort((a, b) => a - b)
-          .map((k) => items[k])
-          .filter((o) => o && o.k !== 'ok'),
-      };
+  /** Оценка раздела: { id, v, mark: ok|part|bad, trap, missed, wrong }. */
+  MS.secScore = function (st, si) {
+    const sec = st.secs[si];
+    const items = MS.items(st, si);
+    const K = items.filter((o) => o.k === 'ok').length || 1;
+    let tp = 0;
+    let fp = 0;
+    let trap = false;
+    sec.sel.forEach((k) => {
+      const o = items[k];
+      if (!o) return;
+      if (o.k === 'ok') tp++;
+      else {
+        fp++;
+        if (o.k === 'trap') trap = true;
+      }
     });
+    const v = U.clamp((tp - 0.75 * fp) / K, 0, 1);
+    return {
+      id: sec.id,
+      v,
+      mark: v >= 0.999 ? 'ok' : v >= 0.5 ? 'part' : 'bad',
+      trap,
+      missed: items.filter((o, k) => o.k === 'ok' && sec.sel.indexOf(k) < 0),
+      wrong: sec.sel
+        .slice()
+        .sort((a, b) => a - b)
+        .map((k) => items[k])
+        .filter((o) => o && o.k !== 'ok'),
+    };
+  };
+  /** Оценка: { pct, traps, exact, per: [оценка раздела] }. */
+  MS.score = function (st) {
+    const per = st.secs.map((sec, si) => MS.secScore(st, si));
+    const sum = per.reduce((a, x) => a + x.v, 0);
     const pct = Math.round((sum / Math.max(1, st.secs.length)) * 100);
-    return { pct, traps, exact: per.filter((x) => x.mark === 'ok').length, per };
+    return { pct, traps: per.filter((x) => x.trap).length, exact: per.filter((x) => x.mark === 'ok').length, per };
   };
 
   /** Текст записи по разделам: model — образец (все верные), иначе — выбранное игроком. [[{ t, k }]] */

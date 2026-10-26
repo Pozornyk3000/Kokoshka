@@ -55,7 +55,11 @@ function solveCase(c, mode, exam) {
   const p = CS.init(s, { id: c.id, mode, exam });
   if (p.parts.includes('talk')) {
     const order = c.q.map((q, i) => ({ i, v: q.v + (q.crit ? 3 : 0) + (chance(skill) ? 0 : rand() * 6 - 3) })).sort((a, b) => b.v - a.v);
-    for (const o of order.slice(0, p.maxQ)) CS.ask(c, p, o.i);
+    // время беседы на сложном уровне меняется по ходу (контакт) — спрашиваем, пока остались вопросы
+    for (const o of order) {
+      if (CS.questionsLeft(p) <= 0) break;
+      CS.ask(c, p, o.i);
+    }
   }
   c.status.opts.forEach((o, i) => {
     if (o.ok ? chance(skill) : chance((1 - skill) / 3)) p.sel.status.push(i);

@@ -301,18 +301,26 @@
         out += '<div class="pearl plain dx-res ' + (pt.dxOk === true ? 'ok' : pt.dxOk === 'part' ? 'part' : 'bad') + '"><span class="eyebrow">' + (pt.dxOk === true ? 'Диагноз верный' : pt.dxOk === 'part' ? 'Частично верно' : 'Диагноз поправил заведующий') + '</span>' + (pt.dxOk !== true && pt.dxText ? '<p class="small">Ваш вариант: ' + esc(pt.dxText) + '</p>' : '') + '<p><b>' + esc(pt.dx) + '.</b> ' + esc(why) + '</p></div>';
       }
     }
-    // беседа
+    // беседа: на сложном уровне — не больше нескольких тем за визит
     const outs = v.out || [];
+    const lim = M.talkLimited(s) ? M.talkBudget(s, pt) : null;
     out +=
-      '<h3 class="step-h">Беседа</h3><div class="talks">' +
+      '<h3 class="step-h">Беседа' + (lim ? ' <span class="dim">· тем ' + lim.used + ' из ' + lim.n + '</span>' : '') + '</h3>' +
+      (lim
+        ? '<p class="small dim qbudget">Времени хватит на ' + lim.n + ' ' + U.plural(lim.n, ['тему', 'темы', 'тем']) + ': ' + lim.base + (v.kind === 'first' ? ' на первичном приёме' : ' на повторном') +
+          lim.mods.map((x) => ', ' + esc(x.t) + ' ' + (x.v > 0 ? '+' : '−') + Math.abs(x.v)).join('') + '. Выбирайте главное — заведующий прокомментирует каждую тему.</p>'
+        : '') +
+      '<div class="talks">' +
       M.talksFor(pt)
         .map((k) => {
           const doneT = v.talks.indexOf(k) >= 0;
-          return '<button type="button" class="chipbtn" data-act="am-talk" data-arg="' + k + '" aria-pressed="' + doneT + '"' + (doneT ? ' aria-disabled="true"' : '') + '>' + esc(M.talkName(pt, k)) + '</button>';
+          const off = doneT || (lim && lim.left <= 0);
+          return '<button type="button" class="chipbtn" data-act="am-talk" data-arg="' + k + '" aria-pressed="' + doneT + '"' + (off ? ' aria-disabled="true"' : '') + '>' + esc(M.talkName(pt, k)) + '</button>';
         })
         .join('') +
       '</div>';
-    if (outs.length) out += '<ul class="fb-list talk-out">' + outs.map((m) => '<li class="fb-' + m.lvl + '">' + U.inline(esc(m.text)) + '</li>').join('') + '</ul>';
+    if (lim && lim.left <= 0) out += '<p class="small dim">Время на беседу вышло.</p>';
+    if (outs.length) out += '<ul class="fb-list talk-out">' + outs.map((m) => '<li class="fb-' + m.lvl + (m.boss ? ' boss' : '') + '">' + U.inline(esc(m.text)) + '</li>').join('') + '</ul>';
     // нежелательные явления (то, что видно на осмотре и со слов)
     const SEEN = ['eps', 'akathisia', 'sedation', 'tremor', 'orthostatic', 'anticholinergic'];
     const se = Object.keys(pt.sx || {})

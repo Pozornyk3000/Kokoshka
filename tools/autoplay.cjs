@@ -204,6 +204,7 @@ const cdp = flag('--cdp', null) || androidPkg;
         ks.forEach((k) => cl('[data-act="mse-tog"][data-arg="' + k + '"]'));
         return 'mse-tog';
       }
+      if (!c.st.secs[c.st.i].checked) return cl('[data-act="mse-check"]') ? 'mse-check' : null;
       if (c.st.i > 0 && Math.random() < 0.04 && cl('[data-act="mse-prev"]')) return 'mse-prev';
       return cl('[data-act="mse-next"]') || cl('[data-act="mse-done"]') ? 'mse-next' : null;
     }, argv.includes('--smart'));

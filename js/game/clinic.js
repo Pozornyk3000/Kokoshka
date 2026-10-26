@@ -959,10 +959,91 @@
     return M.TALKS[k].name.replace('{REL_LC}', REL_ACC[rel] || rel);
   };
   M.talksFor = (pt) => Object.keys(M.TALKS).filter((k) => !M.TALKS[k].when || M.TALKS[k].when(pt));
+
+  /** Время на беседу (сложная игра): сколько тем успеть за визит. Первичный приём длиннее; усталость и стресс
+      отнимают тему, хороший контакт с пациентом добавляет, настороженность — отнимает. */
+  M.talkBudget = function (s, pt) {
+    const v = pt.vis;
+    const base = v && v.kind === 'first' ? 3 : 2;
+    const mods = [];
+    if (s.energy < 30) mods.push({ v: -1, t: 'усталость' });
+    if (s.stress > 70) mods.push({ v: -1, t: 'стресс' });
+    if (pt.insight >= 0.75) mods.push({ v: 1, t: 'хороший контакт' });
+    else if (pt.insight < 0.45) mods.push({ v: -1, t: 'пациент насторожен' });
+    const n = Math.max(1, base + mods.reduce((a, x) => a + x.v, 0));
+    const used = v ? v.talks.length : 0;
+    return { base, mods, n, used, left: Math.max(0, n - used) };
+  };
+  M.talkLimited = (s) => G().hard(s);
+
+  /** Комментарий заведующего к выбранной теме беседы: нужна ли она этому пациенту сейчас. { lvl, text } */
+  M.talkVerdict = function (s, pt, k) {
+    const v = pt.vis;
+    const t = P().tags(pt);
+    const on = (ids) => pt.rx.some((r) => ids.indexOf(r.id) >= 0 && !r.held);
+    const own = pt.rx.filter((r) => r.kind !== 'int' && !r.home && !r.pre);
+    const first = v && v.kind === 'first';
+    const changed = v && JSON.stringify(rxSnap(pt)) !== JSON.stringify(v.rx0);
+    const risk = (pt.risk && pt.risk.suicide) || 0;
+    const st = P().stage(pt.sev).k;
+    const ok = (x) => ({ lvl: 'ok', text: '**Верно:** ' + x });
+    const soso = (x) => ({ lvl: 'info', text: '**Можно, но** ' + x });
+    const miss = (x) => ({ lvl: 'warn', text: '**Не главное сейчас:** ' + x });
+    switch (k) {
+      case 'explain':
+        if (!own.length && !pt.rx.some((r) => r.kind === 'int')) return soso('лучше после назначения: объясняют конкретное лечение — что делает препарат, чего ждать и когда.');
+        if (first || changed || pt.talks.explain == null) return ok('объяснить, как действует лечение и когда ждать эффекта, — лучший способ удержать пациента в терапии в первые недели.');
+        return soso('лечение не менялось, и вы уже объясняли, как оно действует.');
+      case 'goal':
+        if (pt.flags.wantsStop) return ok('пациент собирается бросить лечение — сроки и риск рецидива обсуждают именно сейчас.');
+        if (st === 'remission' || st === 'mild') return ok('когда стало лучше, главный риск — бросить лечение раньше срока.');
+        if (first) return ok('сроки обсуждают сразу: эффект придёт не за неделю, а лечиться — месяцы.');
+        return soso('о сроках вы уже говорили, а состояние ещё не стабилизировалось — сейчас важнее другое.');
+      case 'adherence':
+        if (pt.stopped || pt.adherence < 0.8 || pt.flags.wantsStop) return ok('пропуски и самовольная отмена — частая причина «неэффективности» лечения.');
+        if (!own.length) return miss('лечение ещё не назначено — пропускать пока нечего.');
+        return soso('пациент принимает лечение исправно.');
+      case 'safety':
+        if (risk >= 1 || t.suicide_high) return ok('при мыслях о смерти риск оценивают прямым вопросом и составляют план безопасности — на первом визите и при каждом ухудшении.');
+        return { lvl: 'info', text: '**Уместно:** о суицидальных мыслях спрашивают каждого пациента — здесь риск низкий.' };
+      case 'family':
+        if (risk >= 1 || pt.stopped || pt.insight < 0.6 || ['dementia_bpsd', 'dementia_mild', 'schizophrenia', 'alcohol_dependence', 'bipolar_maint', 'bipolar_depression'].indexOf(pt.group) >= 0)
+          return ok('близкие помогают с приёмом лекарств, замечают ранние признаки ухудшения и звонят, если что-то не так.');
+        return soso('пациент справляется сам — помощь близких здесь не первоочередная.');
+      case 'lifestyle': {
+        const wr = pt.rx.some((r) => {
+          const d = r.kind === 'int' ? null : P().drug(r.id);
+          return d && !r.held && d.se && d.se.weight >= 2;
+        });
+        const o = v && v.obj;
+        if (wr || (o && (o.gain >= 3 || o.bmi >= 30))) return ok('на этом лечении растёт вес — профилактику начинают сразу, а не когда прибавка уже есть.');
+        return miss('препаратов, от которых заметно растёт вес, нет, и вес стабилен.');
+      }
+      case 'alcohol':
+        if (t.alcohol || pt.group === 'alcohol_dependence') return ok('алкоголь ухудшает сон и настроение, мешает лечению и опасен вместе с препаратами.');
+        return soso('проблем с алкоголем нет — предупредить о несовместимости с лекарствами достаточно один раз.');
+      case 'sleep':
+        if (pt.group === 'insomnia') return ok('режим сна и дневник — основа лечения хронической бессонницы, раньше и важнее снотворного.');
+        if (on(['zopiclone', 'zolpidem', 'phenazepam', 'alprazolam', 'lorazepam', 'clonazepam', 'diazepam'])) return ok('снотворное и транквилизатор — не навсегда: без режима сна их не отменить.');
+        if (['ptsd', 'gad', 'depression', 'bipolar_depression'].indexOf(pt.group) >= 0) return soso('сон наладится с лечением основного расстройства — режим сна только помогает.');
+        return miss('сон у пациента — не главная проблема.');
+      case 'pregnancy': {
+        const ter = pt.rx.filter((r) => !r.held && ['valproate', 'carbamazepine', 'lithium'].indexOf(r.id) >= 0).map((r) => P().drug(r.id).name.toLowerCase());
+        if (ter.length) return ok((ter.length > 1 ? 'препараты ' : 'препарат ') + ter.map((x) => '«' + x + '»').join(' и ') + (ter.length > 1 ? ' опасны' : ' опасен') + ' при беременности — контрацепция и планирование обязательны.');
+        if (t.breastfeeding || t.pregnancy) return ok('при грудном вскармливании и беременности выбор препарата зависит от безопасности для ребёнка — это обсуждают сразу.');
+        return { lvl: 'info', text: '**Уместно:** с женщиной детородного возраста о планах на беременность говорят до выбора препарата.' };
+      }
+    }
+    return null;
+  };
+
   /** Провести беседу. Возвращает [{ lvl, text }] — что сказал пациент и как это оценил заведующий. */
   M.talk = function (s, pt, k) {
     const v = pt.vis;
     if (!v || v.talks.indexOf(k) >= 0) return [];
+    // сложная игра: на приёме не обо всём успеть поговорить
+    if (M.talkLimited(s) && M.talkBudget(s, pt).left <= 0) return [];
+    const verdict = M.talkVerdict(s, pt, k);
     v.talks.push(k);
     pt.talks[k] = s.day;
     const out = [];
@@ -1025,6 +1106,7 @@
         out.push({ lvl: 'ok', text: fill('{P}: «Не знала, что таблетки так опасны для ребёнка. Пока будем предохраняться, а с беременностью подождём, пока не поменяем лечение».') });
         break;
     }
+    if (verdict) out.push(Object.assign({ boss: true }, verdict));
     return out;
   };
 

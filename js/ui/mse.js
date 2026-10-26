@@ -153,23 +153,36 @@
     out += patientBox(c);
     if (c.intro && st.i === 0) out += '<p class="mse-intro">' + U.inline(esc(c.intro)) + '</p>';
     out += material(c);
+    const chk = !!sec.checked;
     out +=
-      '<h2 class="step-h mse-sec">' + esc(S.name) + ' <span class="dim">— отметьте все верные формулировки</span></h2>' +
+      '<h2 class="step-h mse-sec">' + esc(S.name) + ' <span class="dim">— ' + (chk ? 'разбор раздела' : 'отметьте все верные формулировки') + '</span></h2>' +
       '<p class="small dim mse-hint">' + esc(S.hint) + '</p><div class="opts">';
     out += sec.order
       .map((k) => {
         const o = items[k];
         if (!o) return '';
-        return '<button type="button" class="opt" data-act="mse-tog" data-arg="' + k + '" aria-pressed="' + (sec.sel.indexOf(k) >= 0) + '"><span class="opt-box" aria-hidden="true"></span><span class="opt-main"><span class="opt-t">' + fx(st, o.t) + '</span></span></button>';
+        const on = sec.sel.indexOf(k) >= 0;
+        // после проверки: ✓ верно, пунктир — пропущено, ✗ ошибка (с пояснением), остальное приглушено
+        const cls = !chk ? '' : o.k === 'ok' ? (on ? ' correct' : ' missed') : on ? ' wrong' : ' dim';
+        const sub = chk && on && o.k !== 'ok' ? '<span class="opt-sub">' + (o.k === 'trap' ? '<b>Ярлык.</b> ' : '') + fx(st, o.why) + '</span>' : chk && !on && o.k === 'ok' ? '<span class="opt-sub">Пропущено — это нужно было отметить.</span>' : '';
+        return (
+          '<button type="button" class="opt' + cls + '" data-act="mse-tog" data-arg="' + k + '" aria-pressed="' + on + '"' + (chk ? ' aria-disabled="true"' : '') + '><span class="opt-box" aria-hidden="true"></span><span class="opt-main"><span class="opt-t">' + fx(st, o.t) + '</span>' + sub + '</span></button>'
+        );
       })
       .join('');
     out += '</div>';
+    if (chk) {
+      const r = MS.secScore(st, st.i);
+      const head = r.mark === 'ok' ? 'Точно.' : r.mark === 'part' ? 'Неполно.' : r.trap && !r.missed.length && r.wrong.length === 1 ? 'Ярлык вместо описания.' : 'С ошибкой.';
+      const tail = r.mark === 'ok' ? 'Раздел записан так, как надо.' : (r.wrong.length ? 'Ошибочные формулировки отмечены ✗ — пояснения под ними. ' : '') + (r.missed.length ? 'Пропущенное выделено пунктиром.' : '');
+      out += '<div class="feedback ' + (r.mark === 'ok' ? 'ok' : 'bad') + ' mse-verdict" data-last><b>' + head + '</b> ' + esc(tail) + '</div>';
+    }
     const rec = recordText(st, false, false);
     out += '<details class="talk-fold mse-rec"><summary>Запись в карте · заполнено разделов: ' + filled + ' из ' + n + '</summary>' + (rec ? '<article class="record"><p>' + rec + '</p></article>' : '<p class="small dim">Пока пусто.</p>') + '</details>';
     const last = MS.last(st);
     out +=
       '<div class="next-row mse-nav">' + (st.i > 0 ? btn('Назад', 'mse-prev', null, 'ghost') : '') +
-      btn(last ? 'Готово — на проверку' : 'Дальше', last ? 'mse-done' : 'mse-next', null, 'primary wide', !sec.sel.length) + '</div>';
+      (chk ? btn(last ? 'Итоги' : 'Дальше', last ? 'mse-done' : 'mse-next', null, 'primary wide') : btn('Проверить', 'mse-check', null, 'primary wide', !sec.sel.length)) + '</div>';
     if (!sec.sel.length) out += '<p class="small dim mse-need">Отметьте хотя бы одну формулировку.</p>';
     if (c.quit) out += '<div class="create-btns">' + btn(esc(c.quit), 'mse-quit', null, 'ghost') + '</div>';
     return out;
@@ -239,9 +252,15 @@
     c.save();
     UI.render();
   });
+  UI.on('mse-check', () => {
+    const c = cur();
+    if (!c || !MS.check(c.st)) return;
+    c.save();
+    UI.render({ scroll: 'last' });
+  });
   UI.on('mse-next', () => {
     const c = cur();
-    if (!c || c.st.done || !c.st.secs[c.st.i].sel.length) return;
+    if (!c || c.st.done || !c.st.secs[c.st.i].checked) return;
     MS.go(c.st, 1);
     c.save();
     UI.render({ scroll: 'top' });
@@ -255,7 +274,7 @@
   });
   UI.on('mse-done', () => {
     const c = cur();
-    if (!c || c.st.done || !c.st.secs[c.st.i].sel.length) return;
+    if (!c || c.st.done || !c.st.secs[c.st.i].checked) return;
     MS.finish(c.st);
     c.finish();
     c.save();

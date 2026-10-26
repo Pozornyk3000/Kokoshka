@@ -2712,6 +2712,77 @@ mark.mse-trap {
   font-size: 15px;
 }
 
+/* ---------- Комментарии к вопросам беседы ---------- */
+.talk .qnote {
+  justify-self: stretch;
+}
+.qnote {
+  margin: -2px 0 4px;
+  padding: 6px 10px 7px 30px;
+  position: relative;
+  border-left: 3px solid var(--rule);
+  border-radius: 0 6px 6px 0;
+  background: var(--paper);
+  font-size: 14px;
+  line-height: 1.42;
+  color: var(--ink-2);
+}
+.qnote b {
+  color: var(--ink);
+}
+.qnote .qmark {
+  position: absolute;
+  left: 10px;
+  top: 6px;
+  font-family: var(--f-mono);
+  font-weight: 700;
+}
+.qnote.ok {
+  border-left-color: var(--ok);
+}
+.qnote.ok .qmark {
+  color: var(--ok);
+}
+.qnote.part {
+  border-left-color: var(--warn);
+}
+.qnote.part .qmark {
+  color: var(--warn);
+}
+.qnote.bad {
+  border-left-color: var(--alarm);
+}
+.qnote.bad .qmark {
+  color: var(--alarm);
+}
+.qbudget {
+  margin: -4px 0 10px;
+}
+.talk-sum ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.talk-sum li + li {
+  margin-top: 4px;
+}
+
+.talk-out li.boss {
+  margin-left: 14px;
+  font-size: 0.94em;
+}
+
+/* конструктор статуса: разбор раздела после проверки */
+.opt.missed {
+  border-style: dashed;
+  border-color: var(--ok);
+}
+.opt.missed .opt-box {
+  border-color: var(--ok);
+}
+.mse-verdict {
+  margin-top: 12px;
+}
+
 </style>
 </head>
 <body>
@@ -3865,7 +3936,7 @@ mark.mse-trap {
     },
     hard: {
       name: 'Сложная',
-      desc: 'Диагноз — самостоятельно из полного списка МКБ-10 с поиском. Без подсказок «клинического чутья», без подсказок доз и времени приёма — сверяйтесь со справочником.',
+      desc: 'Диагноз — самостоятельно из полного списка МКБ-10 с поиском. Время беседы зависит от усталости и контакта с пациентом, на амбулаторном приёме — лишь несколько тем за визит. Без подсказок «клинического чутья», доз и времени приёма — сверяйтесь со справочником.',
     },
   };
 
@@ -25277,7 +25348,10 @@ mark.mse-trap {
         dx: order(c.dx.opts.length),
         tx: order(c.tx.opts.length),
       },
-      maxQ: Math.max(3, (c.maxQ || 5) - (s.energy < 30 ? 1 : 0) - (s.flags.wokeTired ? 1 : 0)),
+      maxQ: 0,
+      qBase: (c.maxQ || 5) - (G.hard(s) ? 1 : 0),
+      qMods: CS.budgetMods(s, c, G.hard(s)),
+      log: [],
       tired: s.energy < 30 || s.flags.wokeTired,
       hard: G.hard(s),
       hints: CS.hints(s, c, step.mode),
@@ -25285,7 +25359,82 @@ mark.mse-trap {
     };
     // Порядок вопросов: оставляем авторскую логику — сначала «открывающие», но слегка перемешиваем
     p.order.q = Array.from({ length: c.q.length }, (_, i) => i);
+    p.maxQ = CS.budget(p);
     return p;
+  };
+
+  /* ---------- Время беседы ----------
+     Обычная игра: вопросов по сценарию случая (обычно 5), усталость отнимает по одному, но не меньше трёх.
+     Сложная игра: база на вопрос меньше; усталость, недосып, стресс и ночь отнимают, опыт в теме добавляет,
+     а по ходу беседы — контакт: пациент разговорился — ещё вопрос, замкнулся — на вопрос меньше. Не меньше двух. */
+  CS.Q_MIN = 3;
+  CS.Q_MIN_HARD = 2;
+  CS.Q_MAX_ADD = 3;
+  CS.budgetMods = function (s, c, hard) {
+    const m = [];
+    const add = (k, v, t) => m.push({ k, v, t });
+    if (!hard) {
+      if (s.energy < 30) add('tired', -1, 'усталость');
+      if (s.flags.wokeTired) add('sleep', -1, 'не выспал{ся|ась}');
+      return m;
+    }
+    if (s.energy < 30) add('tired', -2, 'сильная усталость');
+    else if (s.energy < 55) add('tired', -1, 'усталость');
+    if (s.flags.wokeTired) add('sleep', -1, 'не выспал{ся|ась}');
+    if (s.stress > 70) add('stress', -1, 'стресс');
+    if (s.slot === 3) add('night', -1, 'ночь');
+    if ((s.know[c.topic] || 0) >= 70) add('know', 1, 'опыт в теме');
+    return m;
+  };
+  CS.budget = (p) => U.clamp(p.qBase + (p.qMods || []).reduce((a, x) => a + x.v, 0), p.hard ? CS.Q_MIN_HARD : CS.Q_MIN, p.qBase + CS.Q_MAX_ADD);
+  // сложная игра: контакт меняет время беседы — один раз в каждую сторону
+  CS.GOOD_RAPPORT = 70;
+  CS.LOST_RAPPORT = 30;
+  function contactShift(p) {
+    if (!p.hard || !p.qMods) return null;
+    const has = (k) => p.qMods.some((x) => x.k === k);
+    let ev = null;
+    if (p.rapport >= CS.GOOD_RAPPORT && !has('contact')) {
+      p.qMods.push({ k: 'contact', v: 1, t: 'пациент разговорился' });
+      ev = { lvl: 'ok', head: 'Контакт', text: 'Пациент разговорился — беседа идёт легче: ещё один вопрос.' };
+    } else if (p.rapport < CS.LOST_RAPPORT && !has('closed')) {
+      p.qMods.push({ k: 'closed', v: -1, t: 'пациент замкнулся' });
+      ev = { lvl: 'bad', head: 'Контакт', text: 'Пациент замкнулся — беседа сворачивается: на один вопрос меньше.' };
+    }
+    if (ev) p.maxQ = Math.max(p.asked.length, CS.budget(p));
+    return ev;
+  }
+
+  /* ---------- Комментарий к каждому вопросу ---------- */
+  CS.CRIT_OK = {
+    suicide: 'О суицидальных мыслях спрашивают прямо: вопрос не подталкивает к суициду, а помогает оценить риск.',
+    substance: 'Алкоголь и другие вещества — частая причина и «маска» психических нарушений.',
+    somatic: 'Соматические и лекарственные причины исключают в первую очередь.',
+    safety: 'Риск для пациента и окружающих определяет всю тактику.',
+    mania: 'Подъёмы настроения в прошлом меняют диагноз: при биполярном расстройстве антидепрессант без нормотимика опасен.',
+    onset: 'Острое начало — главный признак делирия и органического поражения.',
+    child: 'При послеродовых нарушениях безопасность ребёнка — обязательный вопрос.',
+    meds: 'Принимаемые лекарства — частая причина неотложных состояний и опасных взаимодействий.',
+  };
+  /** Оценка заданного вопроса: { lvl: ok|part|bad, head, text }. low — контакт был потерян до вопроса. */
+  CS.verdict = function (c, qi, low, rapBefore) {
+    if (qi === 'repair') {
+      return rapBefore < CS.LOST_RAPPORT
+        ? { lvl: 'ok', head: 'Верно', text: 'Признать, что говорить трудно, и объяснить цель расспроса — так возвращают доверие. Без этого ответов не услышать.' }
+        : { lvl: 'ok', head: 'Уместно', text: 'Контакт натянут: пауза и объяснение, зачем вы спрашиваете, помогают пациенту раскрыться.' };
+    }
+    const q = c.q[qi];
+    if (!q) return null;
+    if (q.v < 0) return { lvl: 'bad', head: 'Ошибка', text: U.cap(q.bad || 'такой вопрос вредит контакту') + '.' };
+    let v;
+    if (q.crit) v = { lvl: 'ok', head: 'Верно', text: 'Обязательный вопрос. ' + (CS.CRIT_OK[q.crit] || '') };
+    else if (q.key) v = { lvl: 'ok', head: 'Верно', text: 'Ключевой вопрос: ответ прямо влияет на диагноз и тактику.' };
+    else if (q.v >= 3) v = { lvl: 'ok', head: 'Верно', text: 'Очень полезный вопрос.' };
+    else if (q.v >= 2) v = { lvl: 'ok', head: 'Верно', text: 'Полезный вопрос: уточняет картину.' };
+    else if (q.v >= 1) v = { lvl: 'part', head: 'Можно лучше', text: 'Вопрос мало что даёт: время беседы ограничено — сначала главное.' };
+    else v = { lvl: 'part', head: 'Лишний вопрос', text: 'К диагнозу и тактике он ничего не добавляет.' };
+    if (low) v = { lvl: 'part', head: v.lvl === 'ok' ? 'Вопрос верный, но' : 'Контакт потерян', text: 'Пациент ушёл от ответа: контакт потерян. Сначала восстановите доверие — иначе ответов не услышать.' };
+    return v;
   };
 
   /** Подсказки «клинического чутья» в зависимости от знаний темы. */
@@ -25318,20 +25467,26 @@ mark.mse-trap {
 
   CS.repairText = '«Я вижу, что говорить об этом непросто. Я спрашиваю, чтобы понять, как вам помочь. Вы можете не отвечать, если не готовы».';
 
-  /** Задать вопрос: возвращает видимый ответ. */
+  /** Задать вопрос. В p.log[n] — комментарий к n-му вопросу (и событие контакта на сложном уровне). */
   CS.ask = function (c, p, qi) {
+    p.log = p.log || [];
+    const rapBefore = p.rapport;
     if (qi === 'repair') {
       p.asked.push('repair');
       p.repaired++;
       p.rapport = U.clamp(p.rapport + 18, 0, 100);
+      p.log[p.asked.length - 1] = { v: CS.verdict(c, 'repair', false, rapBefore), ev: contactShift(p) };
       return;
     }
     const q = c.q[qi];
     if (!q || p.asked.indexOf(qi) >= 0) return;
-    const lowBefore = p.rapport < 30;
+    const lowBefore = p.rapport < CS.LOST_RAPPORT;
     p.asked.push(qi);
-    p.rapport = U.clamp(p.rapport + (q.rap != null ? q.rap : q.v > 0 ? 2 : 0), 0, 100);
+    // на сложном уровне хорошие вопросы заметнее укрепляют контакт
+    const gain = p.hard ? (q.v >= 3 ? 6 : q.v >= 2 ? 4 : q.v > 0 ? 1 : 0) : q.v > 0 ? 2 : 0;
+    p.rapport = U.clamp(p.rapport + (q.rap != null ? q.rap : gain), 0, 100);
     if (lowBefore && !q.always) p.evasive = (p.evasive || []).concat([qi]);
+    p.log[p.asked.length - 1] = { v: CS.verdict(c, qi, lowBefore && !q.always, rapBefore), ev: contactShift(p) };
   };
   CS.questionsLeft = (p) => p.maxQ - p.asked.length;
   CS.evasive = function (c, qi) {
@@ -29929,10 +30084,91 @@ mark.mse-trap {
     return M.TALKS[k].name.replace('{REL_LC}', REL_ACC[rel] || rel);
   };
   M.talksFor = (pt) => Object.keys(M.TALKS).filter((k) => !M.TALKS[k].when || M.TALKS[k].when(pt));
+
+  /** Время на беседу (сложная игра): сколько тем успеть за визит. Первичный приём длиннее; усталость и стресс
+      отнимают тему, хороший контакт с пациентом добавляет, настороженность — отнимает. */
+  M.talkBudget = function (s, pt) {
+    const v = pt.vis;
+    const base = v && v.kind === 'first' ? 3 : 2;
+    const mods = [];
+    if (s.energy < 30) mods.push({ v: -1, t: 'усталость' });
+    if (s.stress > 70) mods.push({ v: -1, t: 'стресс' });
+    if (pt.insight >= 0.75) mods.push({ v: 1, t: 'хороший контакт' });
+    else if (pt.insight < 0.45) mods.push({ v: -1, t: 'пациент насторожен' });
+    const n = Math.max(1, base + mods.reduce((a, x) => a + x.v, 0));
+    const used = v ? v.talks.length : 0;
+    return { base, mods, n, used, left: Math.max(0, n - used) };
+  };
+  M.talkLimited = (s) => G().hard(s);
+
+  /** Комментарий заведующего к выбранной теме беседы: нужна ли она этому пациенту сейчас. { lvl, text } */
+  M.talkVerdict = function (s, pt, k) {
+    const v = pt.vis;
+    const t = P().tags(pt);
+    const on = (ids) => pt.rx.some((r) => ids.indexOf(r.id) >= 0 && !r.held);
+    const own = pt.rx.filter((r) => r.kind !== 'int' && !r.home && !r.pre);
+    const first = v && v.kind === 'first';
+    const changed = v && JSON.stringify(rxSnap(pt)) !== JSON.stringify(v.rx0);
+    const risk = (pt.risk && pt.risk.suicide) || 0;
+    const st = P().stage(pt.sev).k;
+    const ok = (x) => ({ lvl: 'ok', text: '**Верно:** ' + x });
+    const soso = (x) => ({ lvl: 'info', text: '**Можно, но** ' + x });
+    const miss = (x) => ({ lvl: 'warn', text: '**Не главное сейчас:** ' + x });
+    switch (k) {
+      case 'explain':
+        if (!own.length && !pt.rx.some((r) => r.kind === 'int')) return soso('лучше после назначения: объясняют конкретное лечение — что делает препарат, чего ждать и когда.');
+        if (first || changed || pt.talks.explain == null) return ok('объяснить, как действует лечение и когда ждать эффекта, — лучший способ удержать пациента в терапии в первые недели.');
+        return soso('лечение не менялось, и вы уже объясняли, как оно действует.');
+      case 'goal':
+        if (pt.flags.wantsStop) return ok('пациент собирается бросить лечение — сроки и риск рецидива обсуждают именно сейчас.');
+        if (st === 'remission' || st === 'mild') return ok('когда стало лучше, главный риск — бросить лечение раньше срока.');
+        if (first) return ok('сроки обсуждают сразу: эффект придёт не за неделю, а лечиться — месяцы.');
+        return soso('о сроках вы уже говорили, а состояние ещё не стабилизировалось — сейчас важнее другое.');
+      case 'adherence':
+        if (pt.stopped || pt.adherence < 0.8 || pt.flags.wantsStop) return ok('пропуски и самовольная отмена — частая причина «неэффективности» лечения.');
+        if (!own.length) return miss('лечение ещё не назначено — пропускать пока нечего.');
+        return soso('пациент принимает лечение исправно.');
+      case 'safety':
+        if (risk >= 1 || t.suicide_high) return ok('при мыслях о смерти риск оценивают прямым вопросом и составляют план безопасности — на первом визите и при каждом ухудшении.');
+        return { lvl: 'info', text: '**Уместно:** о суицидальных мыслях спрашивают каждого пациента — здесь риск низкий.' };
+      case 'family':
+        if (risk >= 1 || pt.stopped || pt.insight < 0.6 || ['dementia_bpsd', 'dementia_mild', 'schizophrenia', 'alcohol_dependence', 'bipolar_maint', 'bipolar_depression'].indexOf(pt.group) >= 0)
+          return ok('близкие помогают с приёмом лекарств, замечают ранние признаки ухудшения и звонят, если что-то не так.');
+        return soso('пациент справляется сам — помощь близких здесь не первоочередная.');
+      case 'lifestyle': {
+        const wr = pt.rx.some((r) => {
+          const d = r.kind === 'int' ? null : P().drug(r.id);
+          return d && !r.held && d.se && d.se.weight >= 2;
+        });
+        const o = v && v.obj;
+        if (wr || (o && (o.gain >= 3 || o.bmi >= 30))) return ok('на этом лечении растёт вес — профилактику начинают сразу, а не когда прибавка уже есть.');
+        return miss('препаратов, от которых заметно растёт вес, нет, и вес стабилен.');
+      }
+      case 'alcohol':
+        if (t.alcohol || pt.group === 'alcohol_dependence') return ok('алкоголь ухудшает сон и настроение, мешает лечению и опасен вместе с препаратами.');
+        return soso('проблем с алкоголем нет — предупредить о несовместимости с лекарствами достаточно один раз.');
+      case 'sleep':
+        if (pt.group === 'insomnia') return ok('режим сна и дневник — основа лечения хронической бессонницы, раньше и важнее снотворного.');
+        if (on(['zopiclone', 'zolpidem', 'phenazepam', 'alprazolam', 'lorazepam', 'clonazepam', 'diazepam'])) return ok('снотворное и транквилизатор — не навсегда: без режима сна их не отменить.');
+        if (['ptsd', 'gad', 'depression', 'bipolar_depression'].indexOf(pt.group) >= 0) return soso('сон наладится с лечением основного расстройства — режим сна только помогает.');
+        return miss('сон у пациента — не главная проблема.');
+      case 'pregnancy': {
+        const ter = pt.rx.filter((r) => !r.held && ['valproate', 'carbamazepine', 'lithium'].indexOf(r.id) >= 0).map((r) => P().drug(r.id).name.toLowerCase());
+        if (ter.length) return ok((ter.length > 1 ? 'препараты ' : 'препарат ') + ter.map((x) => '«' + x + '»').join(' и ') + (ter.length > 1 ? ' опасны' : ' опасен') + ' при беременности — контрацепция и планирование обязательны.');
+        if (t.breastfeeding || t.pregnancy) return ok('при грудном вскармливании и беременности выбор препарата зависит от безопасности для ребёнка — это обсуждают сразу.');
+        return { lvl: 'info', text: '**Уместно:** с женщиной детородного возраста о планах на беременность говорят до выбора препарата.' };
+      }
+    }
+    return null;
+  };
+
   /** Провести беседу. Возвращает [{ lvl, text }] — что сказал пациент и как это оценил заведующий. */
   M.talk = function (s, pt, k) {
     const v = pt.vis;
     if (!v || v.talks.indexOf(k) >= 0) return [];
+    // сложная игра: на приёме не обо всём успеть поговорить
+    if (M.talkLimited(s) && M.talkBudget(s, pt).left <= 0) return [];
+    const verdict = M.talkVerdict(s, pt, k);
     v.talks.push(k);
     pt.talks[k] = s.day;
     const out = [];
@@ -29995,6 +30231,7 @@ mark.mse-trap {
         out.push({ lvl: 'ok', text: fill('{P}: «Не знала, что таблетки так опасны для ребёнка. Пока будем предохраняться, а с беременностью подождём, пока не поменяем лечение».') });
         break;
     }
+    if (verdict) out.push(Object.assign({ boss: true }, verdict));
     return out;
   };
 
@@ -30601,7 +30838,7 @@ mark.mse-trap {
   MS.toggle = function (st, k) {
     const sec = st && !st.done ? st.secs[st.i] : null;
     k = +k;
-    if (!sec || !(k >= 0 && k < MS.items(st, st.i).length)) return false;
+    if (!sec || sec.checked || !(k >= 0 && k < MS.items(st, st.i).length)) return false;
     const at = sec.sel.indexOf(k);
     if (at >= 0) sec.sel.splice(at, 1);
     else sec.sel.push(k);
@@ -30611,44 +30848,51 @@ mark.mse-trap {
     if (st && !st.done) st.i = U.clamp(st.i + d, 0, st.secs.length - 1);
   };
   MS.last = (st) => st.i >= st.secs.length - 1;
+  /** Проверить текущий раздел: отметки фиксируются, игрок сразу видит разбор. */
+  MS.check = function (st) {
+    const sec = st && !st.done ? st.secs[st.i] : null;
+    if (!sec || !sec.sel.length) return null;
+    sec.checked = true;
+    return MS.secScore(st, st.i);
+  };
 
-  /** Оценка: { pct, traps, exact, per: [{ id, v, mark: ok|part|bad, trap, missed, wrong }] }. */
-  MS.score = function (st) {
-    let sum = 0;
-    let traps = 0;
-    const per = st.secs.map((sec, si) => {
-      const items = MS.items(st, si);
-      const K = items.filter((o) => o.k === 'ok').length || 1;
-      let tp = 0;
-      let fp = 0;
-      let trap = false;
-      sec.sel.forEach((k) => {
-        const o = items[k];
-        if (!o) return;
-        if (o.k === 'ok') tp++;
-        else {
-          fp++;
-          if (o.k === 'trap') trap = true;
-        }
-      });
-      const v = U.clamp((tp - 0.75 * fp) / K, 0, 1);
-      sum += v;
-      if (trap) traps++;
-      return {
-        id: sec.id,
-        v,
-        mark: v >= 0.999 ? 'ok' : v >= 0.5 ? 'part' : 'bad',
-        trap,
-        missed: items.filter((o, k) => o.k === 'ok' && sec.sel.indexOf(k) < 0),
-        wrong: sec.sel
-          .slice()
-          .sort((a, b) => a - b)
-          .map((k) => items[k])
-          .filter((o) => o && o.k !== 'ok'),
-      };
+  /** Оценка раздела: { id, v, mark: ok|part|bad, trap, missed, wrong }. */
+  MS.secScore = function (st, si) {
+    const sec = st.secs[si];
+    const items = MS.items(st, si);
+    const K = items.filter((o) => o.k === 'ok').length || 1;
+    let tp = 0;
+    let fp = 0;
+    let trap = false;
+    sec.sel.forEach((k) => {
+      const o = items[k];
+      if (!o) return;
+      if (o.k === 'ok') tp++;
+      else {
+        fp++;
+        if (o.k === 'trap') trap = true;
+      }
     });
+    const v = U.clamp((tp - 0.75 * fp) / K, 0, 1);
+    return {
+      id: sec.id,
+      v,
+      mark: v >= 0.999 ? 'ok' : v >= 0.5 ? 'part' : 'bad',
+      trap,
+      missed: items.filter((o, k) => o.k === 'ok' && sec.sel.indexOf(k) < 0),
+      wrong: sec.sel
+        .slice()
+        .sort((a, b) => a - b)
+        .map((k) => items[k])
+        .filter((o) => o && o.k !== 'ok'),
+    };
+  };
+  /** Оценка: { pct, traps, exact, per: [оценка раздела] }. */
+  MS.score = function (st) {
+    const per = st.secs.map((sec, si) => MS.secScore(st, si));
+    const sum = per.reduce((a, x) => a + x.v, 0);
     const pct = Math.round((sum / Math.max(1, st.secs.length)) * 100);
-    return { pct, traps, exact: per.filter((x) => x.mark === 'ok').length, per };
+    return { pct, traps: per.filter((x) => x.trap).length, exact: per.filter((x) => x.mark === 'ok').length, per };
   };
 
   /** Текст записи по разделам: model — образец (все верные), иначе — выбранное игроком. [[{ t, k }]] */
@@ -37375,21 +37619,35 @@ mark.mse-trap {
     return head + body;
   };
 
-  ACT.transcript = function (c, p, markLast) {
+  /** Комментарий к вопросу или событие контакта: ✓ верно, ○ можно лучше, ✗ ошибка. */
+  ACT.qnote = function (v) {
+    if (!v) return '';
+    const mark = v.lvl === 'ok' ? '✓' : v.lvl === 'bad' ? '✗' : '○';
+    return '<p class="qnote ' + v.lvl + '"><span class="qmark" aria-hidden="true">' + mark + '</span><b>' + U.esc(v.head) + '.</b> ' + U.inline(U.esc(v.text)) + '</p>';
+  };
+  /** Беседа: реплики и, если notes, комментарии к каждому вопросу (на экзамене их нет). */
+  ACT.transcript = function (c, p, markLast, notes) {
     let out = '<div class="talk"><div class="bubble pt"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.inline(U.esc(c.complaint)) + '</div>';
     p.asked.forEach((qi, n) => {
       const last = markLast && n === p.asked.length - 1;
+      const lg = (p.log && p.log[n]) || {};
+      const tail = (notes ? ACT.qnote(lg.v) : '') + ACT.qnote(lg.ev);
       if (qi === 'repair') {
         out += '<div class="bubble dr"' + (last ? ' data-last' : '') + '><span class="who">Вы</span>' + U.esc(CS.repairText) + '</div>';
-        out += '<div class="bubble pt soft">(' + U.esc(c.patient.sex === 'f' ? 'Она' : 'Он') + ' чуть расслабляется и кивает.)</div>';
+        out += '<div class="bubble pt soft">(' + U.esc(c.patient.sex === 'f' ? 'Она' : 'Он') + ' чуть расслабляется и кивает.)</div>' + tail;
         return;
       }
       const q = c.q[qi];
       const ev = p.evasive && p.evasive.indexOf(qi) >= 0;
       out += '<div class="bubble dr"' + (last ? ' data-last' : '') + '><span class="who">Вы</span>' + U.esc(U.t(q.t)) + '</div>';
-      out += '<div class="bubble pt' + (ev ? ' evasive' : '') + '"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.esc(ev ? CS.evasive(c, qi) : q.a) + '</div>';
+      out += '<div class="bubble pt' + (ev ? ' evasive' : '') + '"><span class="who">' + U.esc(c.patient.name) + '</span>' + U.esc(ev ? CS.evasive(c, qi) : q.a) + '</div>' + tail;
     });
     return out + '</div>';
+  };
+  /** Время беседы на сложном уровне: из чего сложилось число вопросов. */
+  ACT.budgetLine = function (p) {
+    const mods = (p.qMods || []).map((x) => U.esc(x.t) + ' ' + (x.v > 0 ? '+' : '−') + Math.abs(x.v));
+    return '<p class="small dim qbudget">Время беседы: база ' + p.qBase + (mods.length ? ' · ' + mods.join(' · ') : '') + '. Хороший контакт добавляет вопрос, потерянный — отнимает.</p>';
   };
 
   ACT.rapportLabel = function (r) {
@@ -37404,10 +37662,10 @@ mark.mse-trap {
     const [rl, rc] = ACT.rapportLabel(p.rapport);
     let out = '<section class="story case-intro">' + U.md(c.intro) + '</section>';
     if (mode === 'seminar' && c.tutor) out += '<p class="tutor"><span class="hand">' + U.esc(c.tutor) + '</span></p>';
-    out += ACT.transcript(c, p, true);
+    out += ACT.transcript(c, p, true, mode !== 'exam');
     out +=
       '<div class="talk-meta"><span>Вопросов осталось: <b>' + left + '</b> из ' + p.maxQ + '</span><span class="rapport ' + rc + '">Контакт: <b>' + rl + '</b></span></div>' +
-      (p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
+      (p.hard && p.qMods ? ACT.budgetLine(p) : p.tired ? '<p class="note warn">Ты {устал|устала}: времени на расспрос меньше обычного.</p>' : '');
     if (left > 0) {
       const opts = p.order.q
         .filter((i) => p.asked.indexOf(i) < 0)
@@ -37425,9 +37683,27 @@ mark.mse-trap {
     return U.t(out);
   };
 
+  /** Итог беседы — комментарий к решению закончить расспрос: что из обязательного не спросили. */
+  ACT.talkSummary = function (c, p) {
+    if (p.parts.indexOf('talk') < 0) return '';
+    const asked = p.asked.filter((x) => x !== 'repair');
+    const ev = p.evasive || [];
+    const good = asked.filter((qi) => c.q[qi].v >= 2 && ev.indexOf(qi) < 0).length;
+    const bad = asked.filter((qi) => c.q[qi].v < 0).length;
+    const missed = c.q.filter((q, i) => q.crit && p.asked.indexOf(i) < 0);
+    const ok = !missed.length && !bad;
+    let out =
+      '<div class="feedback ' + (ok ? 'ok' : 'bad') + ' talk-sum"><b>' + (ok ? 'Беседа проведена верно.' : 'Беседа окончена — есть пробелы.') + '</b> ' +
+      'Вопросов: ' + asked.length + ' из ' + p.maxQ + ', по делу — ' + good + (bad ? ', ошибок — ' + bad : '') + '.';
+    if (missed.length) out += '<ul>' + missed.map((q) => '<li>' + U.esc(U.t(CS.critNote(q.crit, q.t))) + '</li>').join('') + '</ul>';
+    else if (asked.length) out += ' Обязательные вопросы заданы.';
+    return out + '</div>';
+  };
+
   ACT.statusStage = function (s, c, p, mode) {
     const exam = mode === 'exam';
     let out = '';
+    if (!exam) out += ACT.talkSummary(c, p);
     if (!exam) out += '<details class="talk-fold"><summary>Беседа</summary>' + ACT.transcript(c, p, false) + '</details>';
     out += '<article class="record"><span class="eyebrow">Психический статус</span><p>' + U.esc(c.status.text) + '</p></article>';
     out += '<h2 class="step-h">Какие симптомы вы отмечаете? <span class="dim">Выберите все верные</span></h2><div class="opts">';
@@ -37513,6 +37789,17 @@ mark.mse-trap {
 
     // Разбор по шагам
     out += '<section class="review">';
+    if (p.parts.indexOf('talk') >= 0 && p.asked.length) {
+      out += '<h2 class="step-h">Беседа</h2><ul class="marks">';
+      p.asked.forEach((qi, n) => {
+        const lg = (p.log && p.log[n]) || {};
+        const v = lg.v || CS.verdict(c, qi, (p.evasive || []).indexOf(qi) >= 0, p.rapport);
+        if (!v) return;
+        const t = qi === 'repair' ? 'Восстановить контакт' : U.t(c.q[qi].t);
+        out += '<li class="' + (v.lvl === 'ok' ? 'm-ok' : v.lvl === 'bad' ? 'm-bad' : 'm-miss') + '">' + U.esc(t) + '<span class="m-def"><b>' + U.esc(v.head) + '.</b> ' + U.esc(v.text) + '</span></li>';
+      });
+      out += '</ul>';
+    }
     if (p.parts.indexOf('status') >= 0) {
       out += '<h2 class="step-h">Статус</h2><ul class="marks">';
       c.status.opts.forEach((o, i) => {
@@ -39254,18 +39541,26 @@ mark.mse-trap {
         out += '<div class="pearl plain dx-res ' + (pt.dxOk === true ? 'ok' : pt.dxOk === 'part' ? 'part' : 'bad') + '"><span class="eyebrow">' + (pt.dxOk === true ? 'Диагноз верный' : pt.dxOk === 'part' ? 'Частично верно' : 'Диагноз поправил заведующий') + '</span>' + (pt.dxOk !== true && pt.dxText ? '<p class="small">Ваш вариант: ' + esc(pt.dxText) + '</p>' : '') + '<p><b>' + esc(pt.dx) + '.</b> ' + esc(why) + '</p></div>';
       }
     }
-    // беседа
+    // беседа: на сложном уровне — не больше нескольких тем за визит
     const outs = v.out || [];
+    const lim = M.talkLimited(s) ? M.talkBudget(s, pt) : null;
     out +=
-      '<h3 class="step-h">Беседа</h3><div class="talks">' +
+      '<h3 class="step-h">Беседа' + (lim ? ' <span class="dim">· тем ' + lim.used + ' из ' + lim.n + '</span>' : '') + '</h3>' +
+      (lim
+        ? '<p class="small dim qbudget">Времени хватит на ' + lim.n + ' ' + U.plural(lim.n, ['тему', 'темы', 'тем']) + ': ' + lim.base + (v.kind === 'first' ? ' на первичном приёме' : ' на повторном') +
+          lim.mods.map((x) => ', ' + esc(x.t) + ' ' + (x.v > 0 ? '+' : '−') + Math.abs(x.v)).join('') + '. Выбирайте главное — заведующий прокомментирует каждую тему.</p>'
+        : '') +
+      '<div class="talks">' +
       M.talksFor(pt)
         .map((k) => {
           const doneT = v.talks.indexOf(k) >= 0;
-          return '<button type="button" class="chipbtn" data-act="am-talk" data-arg="' + k + '" aria-pressed="' + doneT + '"' + (doneT ? ' aria-disabled="true"' : '') + '>' + esc(M.talkName(pt, k)) + '</button>';
+          const off = doneT || (lim && lim.left <= 0);
+          return '<button type="button" class="chipbtn" data-act="am-talk" data-arg="' + k + '" aria-pressed="' + doneT + '"' + (off ? ' aria-disabled="true"' : '') + '>' + esc(M.talkName(pt, k)) + '</button>';
         })
         .join('') +
       '</div>';
-    if (outs.length) out += '<ul class="fb-list talk-out">' + outs.map((m) => '<li class="fb-' + m.lvl + '">' + U.inline(esc(m.text)) + '</li>').join('') + '</ul>';
+    if (lim && lim.left <= 0) out += '<p class="small dim">Время на беседу вышло.</p>';
+    if (outs.length) out += '<ul class="fb-list talk-out">' + outs.map((m) => '<li class="fb-' + m.lvl + (m.boss ? ' boss' : '') + '">' + U.inline(esc(m.text)) + '</li>').join('') + '</ul>';
     // нежелательные явления (то, что видно на осмотре и со слов)
     const SEEN = ['eps', 'akathisia', 'sedation', 'tremor', 'orthostatic', 'anticholinergic'];
     const se = Object.keys(pt.sx || {})
@@ -39839,23 +40134,36 @@ mark.mse-trap {
     out += patientBox(c);
     if (c.intro && st.i === 0) out += '<p class="mse-intro">' + U.inline(esc(c.intro)) + '</p>';
     out += material(c);
+    const chk = !!sec.checked;
     out +=
-      '<h2 class="step-h mse-sec">' + esc(S.name) + ' <span class="dim">— отметьте все верные формулировки</span></h2>' +
+      '<h2 class="step-h mse-sec">' + esc(S.name) + ' <span class="dim">— ' + (chk ? 'разбор раздела' : 'отметьте все верные формулировки') + '</span></h2>' +
       '<p class="small dim mse-hint">' + esc(S.hint) + '</p><div class="opts">';
     out += sec.order
       .map((k) => {
         const o = items[k];
         if (!o) return '';
-        return '<button type="button" class="opt" data-act="mse-tog" data-arg="' + k + '" aria-pressed="' + (sec.sel.indexOf(k) >= 0) + '"><span class="opt-box" aria-hidden="true"></span><span class="opt-main"><span class="opt-t">' + fx(st, o.t) + '</span></span></button>';
+        const on = sec.sel.indexOf(k) >= 0;
+        // после проверки: ✓ верно, пунктир — пропущено, ✗ ошибка (с пояснением), остальное приглушено
+        const cls = !chk ? '' : o.k === 'ok' ? (on ? ' correct' : ' missed') : on ? ' wrong' : ' dim';
+        const sub = chk && on && o.k !== 'ok' ? '<span class="opt-sub">' + (o.k === 'trap' ? '<b>Ярлык.</b> ' : '') + fx(st, o.why) + '</span>' : chk && !on && o.k === 'ok' ? '<span class="opt-sub">Пропущено — это нужно было отметить.</span>' : '';
+        return (
+          '<button type="button" class="opt' + cls + '" data-act="mse-tog" data-arg="' + k + '" aria-pressed="' + on + '"' + (chk ? ' aria-disabled="true"' : '') + '><span class="opt-box" aria-hidden="true"></span><span class="opt-main"><span class="opt-t">' + fx(st, o.t) + '</span>' + sub + '</span></button>'
+        );
       })
       .join('');
     out += '</div>';
+    if (chk) {
+      const r = MS.secScore(st, st.i);
+      const head = r.mark === 'ok' ? 'Точно.' : r.mark === 'part' ? 'Неполно.' : r.trap && !r.missed.length && r.wrong.length === 1 ? 'Ярлык вместо описания.' : 'С ошибкой.';
+      const tail = r.mark === 'ok' ? 'Раздел записан так, как надо.' : (r.wrong.length ? 'Ошибочные формулировки отмечены ✗ — пояснения под ними. ' : '') + (r.missed.length ? 'Пропущенное выделено пунктиром.' : '');
+      out += '<div class="feedback ' + (r.mark === 'ok' ? 'ok' : 'bad') + ' mse-verdict" data-last><b>' + head + '</b> ' + esc(tail) + '</div>';
+    }
     const rec = recordText(st, false, false);
     out += '<details class="talk-fold mse-rec"><summary>Запись в карте · заполнено разделов: ' + filled + ' из ' + n + '</summary>' + (rec ? '<article class="record"><p>' + rec + '</p></article>' : '<p class="small dim">Пока пусто.</p>') + '</details>';
     const last = MS.last(st);
     out +=
       '<div class="next-row mse-nav">' + (st.i > 0 ? btn('Назад', 'mse-prev', null, 'ghost') : '') +
-      btn(last ? 'Готово — на проверку' : 'Дальше', last ? 'mse-done' : 'mse-next', null, 'primary wide', !sec.sel.length) + '</div>';
+      (chk ? btn(last ? 'Итоги' : 'Дальше', last ? 'mse-done' : 'mse-next', null, 'primary wide') : btn('Проверить', 'mse-check', null, 'primary wide', !sec.sel.length)) + '</div>';
     if (!sec.sel.length) out += '<p class="small dim mse-need">Отметьте хотя бы одну формулировку.</p>';
     if (c.quit) out += '<div class="create-btns">' + btn(esc(c.quit), 'mse-quit', null, 'ghost') + '</div>';
     return out;
@@ -39925,9 +40233,15 @@ mark.mse-trap {
     c.save();
     UI.render();
   });
+  UI.on('mse-check', () => {
+    const c = cur();
+    if (!c || !MS.check(c.st)) return;
+    c.save();
+    UI.render({ scroll: 'last' });
+  });
   UI.on('mse-next', () => {
     const c = cur();
-    if (!c || c.st.done || !c.st.secs[c.st.i].sel.length) return;
+    if (!c || c.st.done || !c.st.secs[c.st.i].checked) return;
     MS.go(c.st, 1);
     c.save();
     UI.render({ scroll: 'top' });
@@ -39941,7 +40255,7 @@ mark.mse-trap {
   });
   UI.on('mse-done', () => {
     const c = cur();
-    if (!c || c.st.done || !c.st.secs[c.st.i].sel.length) return;
+    if (!c || c.st.done || !c.st.secs[c.st.i].checked) return;
     MS.finish(c.st);
     c.finish();
     c.save();
