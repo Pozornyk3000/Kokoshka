@@ -150,6 +150,39 @@ const ok = (cond, msg) => {
   ok(r.done && r.pct === (half ? 94 : 100), 'итог ' + r.pct + '%');
   await click('tr-home');
 
+  console.log('Уровни сложности и достижения');
+  ok((await page.locator('[data-act="tr-lvl"]').count()) === 4, 'переключатель уровня: все, базовый, средний, сложный');
+  await click('tr-lvl', 3);
+  ok(await page.evaluate(() => A.trainer.stats().lvl === 3), 'выбранный уровень сохраняется');
+  const hardChips = await page.evaluate(() => [...document.querySelectorAll('[data-act="tr-topic"]')].map((b) => +b.textContent.split('·').pop()));
+  ok(hardChips.length === 10 && hardChips.every((n) => n >= 8), 'на сложном уровне в каждой теме не меньше 8 вопросов: ' + hardChips.join(', '));
+  await click('tr-start', 'accr20');
+  ok(await page.evaluate(() => { const r = A.ui.view.trainer.run; return r.lvl === 3 && r.refs.every((x) => A.trainer.refLevel(x) === 3); }), 'тест сложного уровня — только сложные вопросы');
+  ok(await page.evaluate(() => /сложный уровень/.test(document.querySelector('.act-head').textContent)), 'в заголовке виден уровень');
+  for (let i = 0; i < 20; i++) {
+    await click('tr-pick', await okIndex());
+    await click('tr-next');
+  }
+  r = await run();
+  ok(r.done && r.pct === 100, 'сложный тест без ошибок: ' + r.pct + '%');
+  const newAch = await page.evaluate(() => A.ui.view.trainer.run.newAch);
+  ok(['pass20', 'hard_pass', 'hard_ace'].every((id) => newAch.indexOf(id) >= 0), 'новые достижения: ' + newAch.join(', '));
+  ok(await has('.tr-ach-new .ach.got'), 'новые достижения показаны в итогах');
+  ok(await page.evaluate(() => A.trainer.stats().best.accr20_l3 === 100), 'лучший результат сохранён отдельно для уровня');
+  await click('tr-home');
+  const got = await page.evaluate(() => A.trainer.achList().filter((a) => a.got).map((a) => a.id));
+  ok(['first', 'topic_ace', 'streak10'].every((id) => got.indexOf(id) >= 0), 'достижения за прошлые тесты: ' + got.join(', '));
+  ok(await page.evaluate((n) => new RegExp(n + ' из ').test(document.querySelector('.tr-achs .h2').textContent), got.length), 'карточка достижений: ' + got.length + ' из ' + (await page.evaluate(() => A.trainer.ACH.length)));
+  // переход на официальный экзамен — тоже достижение (сам переход в тесте отменяем)
+  await page.evaluate(() => window.addEventListener('click', (e) => e.preventDefault()));
+  await page.locator('a[data-official]').click();
+  await page.waitForTimeout(100);
+  ok(await page.evaluate(() => !!A.trainer.stats().ach.official), 'достижение за переход на официальный экзамен');
+  await click('tr-lvl', 1);
+  const em1 = await page.evaluate(() => A.trainer.topicCount('emergency', 1));
+  ok(em1 >= (await page.evaluate(() => A.trainer.MIN_TOPIC)), 'на базовом уровне тест по каждой теме доступен (неотложка — ' + em1 + ')');
+  await click('tr-lvl', 0);
+
   console.log('Разделы МКБ и «назад»');
   await click('tr-start', 'dx');
   await click('icd-block', 'F3');

@@ -131,6 +131,22 @@ step "Устройство"
 adb shell getprop ro.build.version.release
 adb shell getprop ro.build.version.sdk
 adb shell dumpsys webviewupdate 2>/dev/null | grep -iE "current webview package|valid package" | head -3 | tee "$RES/webview.txt"
+# Окна «Приложение не отвечает» у системных приложений (лаунчер под нагрузкой) перехватывают фокус и нажатия
+# кнопок — на тестовом эмуляторе их прячем, чтобы проверять игру, а не лаунчер
+adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1 || true
+
+# Фокус у игры? Если нет — показать, у кого он, вернуть игру на экран и проверить ещё раз
+focused() { adb shell dumpsys window 2>/dev/null | grep -E "mCurrentFocus" | tr -d '\r'; }
+ensure_focus() {
+  local f
+  f=$(focused)
+  echo "$f" | grep -q "$PKG" && return 0
+  echo "фокус не у игры: $f"
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+  launch
+  sleep 2
+  focused | grep -q "$PKG"
+}
 
 # ---------------------------------------------------------------- отладочная сборка
 step "1. Отладочная сборка: установка и запуск"
@@ -173,8 +189,16 @@ check click '[data-act="continue"]' > /dev/null || err "нет кнопки «П
 if [ "$(check eval '!A.state.activity')" = "true" ]; then
   check click '[data-act="tab"][data-arg="menu"]' > /dev/null
   shot 04-menu
+  ensure_focus || echo "игра так и не получила фокус"
   adb shell input keyevent KEYCODE_BACK
   sleep 1
+  if [ "$(check eval 'A.ui.view.tab')" != "hub" ] && ! focused | grep -q "$PKG"; then
+    # нажатие ушло системному окну, а не игре — повторить один раз, когда фокус вернётся к игре
+    echo "«назад» не дошло до игры (фокус: $(focused)) — повтор"
+    ensure_focus && check click '[data-act="tab"][data-arg="menu"]' > /dev/null
+    adb shell input keyevent KEYCODE_BACK
+    sleep 1
+  fi
   [ "$(check eval 'A.ui.view.tab')" = "hub" ] || err "«назад» на вкладке меню не вернул на экран дня"
   check eval "window.__e2eMarker = 42" > /dev/null
   adb shell input keyevent KEYCODE_BACK

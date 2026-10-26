@@ -2511,6 +2511,33 @@ a.btn {
 .trainer .tr-note {
   margin: -4px 0 4px;
 }
+.trainer .tr-levels {
+  margin: 12px 0 4px;
+}
+.trainer .tr-levels .seg {
+  margin: 6px 0 4px;
+}
+.chip.tr-lvl {
+  margin-left: 6px;
+}
+.chip.tr-lvl.l2 {
+  color: var(--warn);
+}
+.chip.tr-lvl.l3 {
+  color: var(--alarm);
+  border-color: currentColor;
+}
+.trainer .tr-achs summary {
+  cursor: pointer;
+  margin: 0;
+}
+.trainer .tr-achs[open] summary {
+  margin-bottom: 8px;
+}
+.trainer .tr-ach-new {
+  border-color: var(--stamp);
+  box-shadow: inset 3px 0 0 var(--stamp);
+}
 .trainer .card .row-btns {
   margin-top: 8px;
 }

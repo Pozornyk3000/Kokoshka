@@ -222,13 +222,20 @@ for (const q of D.testBank || []) {
   else if (new Set(q.opts.map(normQ)).size !== 4) errors.push(`${w}: повторяющиеся варианты`);
   if (!Number.isInteger(q.ok) || q.ok < 0 || q.ok >= (q.opts || []).length) errors.push(`${w}: неверный ok`);
   if (!str(q.why, 60)) errors.push(`${w}: короткое пояснение why`);
+  if (q.lvl != null && ![1, 2, 3].includes(q.lvl)) errors.push(`${w}: уровень lvl — 1, 2 или 3`);
   const n = normQ(q.q);
   if (qTexts.has(n)) errors.push(`${w}: вопрос повторяет ${qTexts.get(n)}`);
   else qTexts.set(n, w);
   [q.q, q.why].concat(q.opts || []).forEach((t) => badChars(t, w));
 }
 const byTopic = {};
-for (const q of D.testBank || []) byTopic[q.topic] = (byTopic[q.topic] || 0) + 1;
+const hardBy = {};
+for (const q of D.testBank || []) {
+  byTopic[q.topic] = (byTopic[q.topic] || 0) + 1;
+  if (q.lvl === 3) hardBy[q.topic] = (hardBy[q.topic] || 0) + 1;
+}
+// Полный тест сложного уровня (80 вопросов) берёт по 8 сложных вопросов из каждой темы
+if ((D.testBank || []).some((q) => q.lvl === 3)) for (const k of DOMAINS) if ((hardBy[k] || 0) < 8) errors.push(`testBank: в теме ${k} сложных вопросов ${hardBy[k] || 0} — нужно не меньше 8`);
 
 /* ---------- Отделение: формуляр, КР, пациенты, тексты ---------- */
 // Модуль фармакологии нужен для групп пациентов и меток (загружаем движок без интерфейса)
@@ -471,7 +478,7 @@ const counts = {
   'рубрик МКБ': (D.icd || []).length,
 };
 console.log('Загружено:', Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', '));
-if ((D.testBank || []).length) console.log('Банк вопросов по темам:', DOMAINS.map((k) => `${k} ${byTopic[k] || 0}`).join(', '));
+if ((D.testBank || []).length) console.log('Банк вопросов по темам (из них сложных):', DOMAINS.map((k) => `${k} ${byTopic[k] || 0} (${hardBy[k] || 0})`).join(', '));
 warns.forEach((w) => console.log('  ⚠ ' + w));
 errors.forEach((e) => console.log('  ✗ ' + e));
 console.log(errors.length ? `Ошибок: ${errors.length}` : 'Ошибок нет.');
